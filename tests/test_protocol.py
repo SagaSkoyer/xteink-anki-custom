@@ -14,9 +14,41 @@ SPEC.loader.exec_module(PROTOCOL)
 
 ProtocolError = PROTOCOL.ProtocolError
 parse_push_payload = PROTOCOL.parse_push_payload
+encode_pull_ndjson = PROTOCOL.encode_pull_ndjson
 
 
 class ParsePushPayloadTests(unittest.TestCase):
+    def test_pull_ndjson_has_bounded_records(self):
+        encoded = encode_pull_ndjson(
+            {
+                "status": "success",
+                "protocol_version": 2,
+                "pull_id": "pull-123",
+                "server_time": 1_785_000_000,
+                "cards": [
+                    {
+                        "id": "1700000000000",
+                        "front": "line one\nline two",
+                        "back": "Antwort",
+                        "is_learning": True,
+                    },
+                    {
+                        "id": "1700000000001",
+                        "front": "Question",
+                        "back": "Answer",
+                        "is_learning": False,
+                    },
+                ],
+            }
+        )
+
+        lines = encoded.decode("utf-8").splitlines()
+        self.assertEqual(len(lines), 4)
+        self.assertEqual(json.loads(lines[0])["card_count"], 2)
+        self.assertEqual(json.loads(lines[1])["front"], "line one\nline two")
+        self.assertEqual(json.loads(lines[2])["type"], "card")
+        self.assertEqual(json.loads(lines[3]), {"type": "end", "card_count": 2})
+
     def test_json_batch(self):
         body = json.dumps(
             {

@@ -32,6 +32,18 @@ Anki erlauben.
 Die Konfiguration kann unter **Werkzeuge → Erweiterungen → Xteink X4 E-Ink
 Offline Sync → Konfiguration** geändert werden.
 
+## Installation auf dem X4
+
+Für CrossPoint 1.4.1 liegt die gebaute X4-Firmware unter
+`dist/crosspoint-1.4.1-xteink-anki.bin`. Nach dem Flashen erscheint **Anki**
+als eigener Punkt im CrossPoint-Hauptmenü. Dort werden einmalig die
+Mac-Adresse, einschließlich Port `5050`, und der im Anki-Status angezeigte
+API-Token eingetragen.
+
+Der vollständige, reproduzierbare Build- und Flash-Ablauf steht in
+[`firmware/README.md`](firmware/README.md). Das Firmware-Binary ist nur für den
+Xteink X4 auf Basis von CrossPoint 1.4.1 vorgesehen.
+
 ## HTTP-API
 
 Standardadresse: `http://<MAC-IP>:5050`
@@ -86,6 +98,13 @@ Beispielantwort:
   ]
 }
 ```
+
+Der X4 fordert denselben Endpunkt mit
+`Accept: application/x-ndjson` an. Dann wird der Stapel als Kopfzeile, eine
+JSON-Zeile pro Karte und eine Abschlusszeile übertragen. Dadurch kann die
+Firmware die Antwort direkt auf die SD-Karte streamen, ohne den gesamten
+Tagesstapel im knappen ESP32-C3-Arbeitsspeicher zu halten. Andere Clients
+erhalten weiterhin unverändert die JSON-Antwort oben.
 
 Die Auswahl stammt aus Ankís echter Scheduler-Queue und berücksichtigt damit
 den aktuell gewählten Stapel, Reihenfolge und Tageslimits. Karten werden aus

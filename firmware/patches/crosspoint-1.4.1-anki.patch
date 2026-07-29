@@ -1,0 +1,1727 @@
+diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
+index ecd7b0e058d2e72cc831c5c1d0e180c1aeb88aee..85e9b73929e4f3b02bc0e819f819ff03e5bfa9d0 100644
+--- a/lib/I18n/translations/english.yaml
++++ b/lib/I18n/translations/english.yaml
+@@ -8,6 +8,30 @@ STR_SLEEPING: "SLEEPING"
+ STR_ENTERING_SLEEP: "Going to sleep"
+ STR_BROWSE_FILES: "Browse Files"
+ STR_FILE_TRANSFER: "File Transfer"
++STR_ANKI: "Anki"
++STR_ANKI_LEARN: "Learn cards"
++STR_ANKI_DOWNLOAD: "Download today's cards"
++STR_ANKI_UPLOAD: "Upload reviews"
++STR_ANKI_SETTINGS: "Anki settings"
++STR_ANKI_SERVER_URL: "Mac server URL"
++STR_ANKI_API_TOKEN: "API token"
++STR_ANKI_CLEAR_LOCAL: "Clear local Anki data"
++STR_ANKI_CLEAR_CONFIRM: "Delete downloaded cards and pending reviews?"
++STR_ANKI_LOCAL_CLEARED: "Local Anki data cleared"
++STR_ANKI_CONFIGURE_FIRST: "Set the Mac server URL and API token first"
++STR_ANKI_PULLING: "Downloading cards..."
++STR_ANKI_PUSHING: "Uploading reviews..."
++STR_ANKI_PULL_OK: "Cards downloaded"
++STR_ANKI_PUSH_OK: "Reviews uploaded"
++STR_ANKI_OFFLINE_DONE: "All cards reviewed. Upload when Anki is open on the Mac."
++STR_ANKI_QUESTION: "Question"
++STR_ANKI_ANSWER: "Answer"
++STR_ANKI_AGAIN: "Again"
++STR_ANKI_HARD: "Hard"
++STR_ANKI_GOOD: "Good"
++STR_ANKI_EASY: "Easy"
++STR_ANKI_SIDE_PAGES: "Side buttons: pages"
++STR_ANKI_REMAINING_FORMAT: "%u remaining"
+ STR_SETTINGS_TITLE: "Settings"
+ STR_CONTINUE_READING: "Continue Reading"
+ STR_NO_OPEN_BOOK: "No open book"
+diff --git a/lib/I18n/translations/german.yaml b/lib/I18n/translations/german.yaml
+index a7c1ad0866d8872e6e3b11cab4591aa0643b9e51..f926800d1749ef12f26ea3baa543b445ec1123f4 100644
+--- a/lib/I18n/translations/german.yaml
++++ b/lib/I18n/translations/german.yaml
+@@ -8,6 +8,30 @@ STR_SLEEPING: "STANDBY"
+ STR_ENTERING_SLEEP: "Standby"
+ STR_BROWSE_FILES: "Durchsuchen"
+ STR_FILE_TRANSFER: "Datentransfer"
++STR_ANKI: "Anki"
++STR_ANKI_LEARN: "Karten lernen"
++STR_ANKI_DOWNLOAD: "Heutige Karten laden"
++STR_ANKI_UPLOAD: "Bewertungen übertragen"
++STR_ANKI_SETTINGS: "Anki-Einstellungen"
++STR_ANKI_SERVER_URL: "Mac-Serveradresse"
++STR_ANKI_API_TOKEN: "API-Token"
++STR_ANKI_CLEAR_LOCAL: "Lokale Anki-Daten löschen"
++STR_ANKI_CLEAR_CONFIRM: "Geladene Karten und offene Bewertungen löschen?"
++STR_ANKI_LOCAL_CLEARED: "Lokale Anki-Daten gelöscht"
++STR_ANKI_CONFIGURE_FIRST: "Zuerst Mac-Serveradresse und API-Token eintragen"
++STR_ANKI_PULLING: "Karten werden geladen..."
++STR_ANKI_PUSHING: "Bewertungen werden übertragen..."
++STR_ANKI_PULL_OK: "Karten wurden geladen"
++STR_ANKI_PUSH_OK: "Bewertungen wurden übertragen"
++STR_ANKI_OFFLINE_DONE: "Alle Karten gelernt. Übertragen, wenn Anki auf dem Mac geöffnet ist."
++STR_ANKI_QUESTION: "Frage"
++STR_ANKI_ANSWER: "Antwort"
++STR_ANKI_AGAIN: "Nochmal"
++STR_ANKI_HARD: "Schwer"
++STR_ANKI_GOOD: "Gut"
++STR_ANKI_EASY: "Einfach"
++STR_ANKI_SIDE_PAGES: "Seitentasten: blättern"
++STR_ANKI_REMAINING_FORMAT: "%u übrig"
+ STR_SETTINGS_TITLE: "Einstellungen"
+ STR_CONTINUE_READING: "Weiterlesen"
+ STR_NO_OPEN_BOOK: "Aktuell kein Buch"
+diff --git a/src/activities/ActivityManager.cpp b/src/activities/ActivityManager.cpp
+index 96e854608bea15691079d7c24d4114a088ce3f8e..95d91fd5dd7ac44bb5dd4b5f0dcc1ca3d8c965fd 100644
+--- a/src/activities/ActivityManager.cpp
++++ b/src/activities/ActivityManager.cpp
+@@ -6,6 +6,7 @@
+ #include <algorithm>
+ 
+ #include "OpdsServerStore.h"
++#include "anki/AnkiActivity.h"
+ #include "boot_sleep/BootActivity.h"
+ #include "boot_sleep/SleepActivity.h"
+ #include "browser/OpdsBookBrowserActivity.h"
+@@ -193,6 +194,8 @@ void ActivityManager::goToBrowser() {
+   }
+ }
+ 
++void ActivityManager::goToAnki() { replaceActivity(std::make_unique<AnkiActivity>(renderer, mappedInput)); }
++
+ void ActivityManager::goToReader(std::string path) {
+   replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path)));
+ }
+@@ -217,6 +220,8 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
+       initialMenuItem = HomeMenuItem::RECENTS;
+     } else if (activityName == "OpdsBookBrowser") {
+       initialMenuItem = HomeMenuItem::OPDS_BROWSER;
++    } else if (activityName == "Anki") {
++      initialMenuItem = HomeMenuItem::ANKI;
+     } else if (activityName == "CrossPointWebServer") {
+       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
+     } else if (activityName == "Settings") {
+diff --git a/src/activities/ActivityManager.h b/src/activities/ActivityManager.h
+index 9066888d1eb26a6a405d89003731913a7e5b925c..055b1e347b47863bb6b34e5b08d6fdd2877e329c 100644
+--- a/src/activities/ActivityManager.h
++++ b/src/activities/ActivityManager.h
+@@ -16,7 +16,7 @@
+ class Activity;    // forward declaration
+ class RenderLock;  // forward declaration
+ 
+-enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
++enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, OPDS_BROWSER, ANKI, FILE_TRANSFER, SETTINGS_MENU };
+ 
+ /**
+  * ActivityManager
+@@ -85,6 +85,7 @@ class ActivityManager {
+   void goToFileBrowser(std::string path = {});
+   void goToRecentBooks();
+   void goToBrowser();
++  void goToAnki();
+   void goToReader(std::string path);
+   void goToSleep(bool fromTimeout = false);
+   void goToBoot();
+diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..c5cde1bc496e60270975d2938184f00b5267345f
+--- /dev/null
++++ b/src/activities/anki/AnkiActivity.cpp
+@@ -0,0 +1,483 @@
++#include "AnkiActivity.h"
++
++#include <GfxRenderer.h>
++#include <I18n.h>
++#include <WiFi.h>
++#include <esp_wifi.h>
++
++#include <algorithm>
++#include <cctype>
++
++#include "MappedInputManager.h"
++#include "SilentRestart.h"
++#include "activities/anki/AnkiSettingsActivity.h"
++#include "activities/network/WifiSelectionActivity.h"
++#include "anki/AnkiSyncClient.h"
++#include "components/UITheme.h"
++#include "fontIds.h"
++
++namespace {
++size_t nextUtf8Boundary(const std::string& text, const size_t position) {
++  if (position >= text.size()) return text.size();
++  const unsigned char lead = static_cast<unsigned char>(text[position]);
++  size_t bytes = 1;
++  if ((lead & 0xE0) == 0xC0)
++    bytes = 2;
++  else if ((lead & 0xF0) == 0xE0)
++    bytes = 3;
++  else if ((lead & 0xF8) == 0xF0)
++    bytes = 4;
++  return std::min(text.size(), position + bytes);
++}
++
++const char* menuLabel(const AnkiActivity::MenuAction action) {
++  switch (action) {
++    case AnkiActivity::MenuAction::LEARN:
++      return tr(STR_ANKI_LEARN);
++    case AnkiActivity::MenuAction::DOWNLOAD:
++      return tr(STR_ANKI_DOWNLOAD);
++    case AnkiActivity::MenuAction::UPLOAD:
++      return tr(STR_ANKI_UPLOAD);
++    case AnkiActivity::MenuAction::CONFIGURE:
++      return tr(STR_ANKI_SETTINGS);
++  }
++  return tr(STR_ANKI);
++}
++}  // namespace
++
++void AnkiActivity::onEnter() {
++  Activity::onEnter();
++  std::string error;
++  if (!ANKI_STORE.load(error)) {
++    state = State::ERROR;
++    message = error;
++  } else {
++    state = State::MENU;
++    rebuildMenu();
++  }
++  requestUpdate();
++}
++
++void AnkiActivity::onExit() {
++  Activity::onExit();
++  if (wifiActivated) {
++    WiFi.disconnect(false);
++    delay(30);
++    silentRestart();
++  }
++}
++
++bool AnkiActivity::preventAutoSleep() { return state == State::WORKING; }
++
++void AnkiActivity::rebuildMenu() {
++  menuActions.clear();
++  if (ANKI_STORE.hasRemainingCards()) menuActions.push_back(MenuAction::LEARN);
++  if (ANKI_STORE.batchComplete() && ANKI_STORE.hasPendingReviews()) menuActions.push_back(MenuAction::UPLOAD);
++  if (!ANKI_STORE.hasBatch() && !ANKI_STORE.hasPendingReviews()) menuActions.push_back(MenuAction::DOWNLOAD);
++  menuActions.push_back(MenuAction::CONFIGURE);
++  if (selectedIndex >= static_cast<int>(menuActions.size())) selectedIndex = 0;
++}
++
++void AnkiActivity::loop() {
++  if (state == State::MENU) {
++    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
++      onGoHome(HomeMenuItem::ANKI);
++      return;
++    }
++    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
++      handleMenuSelection();
++      return;
++    }
++    buttonNavigator.onNext([this] {
++      selectedIndex = ButtonNavigator::nextIndex(selectedIndex, static_cast<int>(menuActions.size()));
++      requestUpdate();
++    });
++    buttonNavigator.onPrevious([this] {
++      selectedIndex = ButtonNavigator::previousIndex(selectedIndex, static_cast<int>(menuActions.size()));
++      requestUpdate();
++    });
++    return;
++  }
++
++  if (state == State::QUESTION) {
++    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
++      state = State::MENU;
++      rebuildMenu();
++      requestUpdate();
++      return;
++    }
++    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
++      showAnswer();
++      return;
++    }
++    handleQuestionPaging();
++    return;
++  }
++
++  if (state == State::ANSWER) {
++    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
++      grade(1);
++      return;
++    }
++    if (mappedInput.wasPressed(MappedInputManager::Button::Left)) {
++      grade(2);
++      return;
++    }
++    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
++      grade(3);
++      return;
++    }
++    if (mappedInput.wasPressed(MappedInputManager::Button::Right)) {
++      grade(4);
++      return;
++    }
++    handleAnswerPaging();
++    return;
++  }
++
++  if (state == State::MESSAGE || state == State::ERROR) {
++    if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
++        mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
++      if (restartOnDismiss || wifiActivated) {
++        onGoHome(HomeMenuItem::ANKI);
++      } else {
++        state = State::MENU;
++        rebuildMenu();
++        requestUpdate();
++      }
++    }
++  }
++}
++
++void AnkiActivity::handleMenuSelection() {
++  if (menuActions.empty() || selectedIndex >= static_cast<int>(menuActions.size())) return;
++  switch (menuActions[selectedIndex]) {
++    case MenuAction::LEARN:
++      startReview();
++      break;
++    case MenuAction::DOWNLOAD:
++      startNetworkAction(NetworkAction::PULL);
++      break;
++    case MenuAction::UPLOAD:
++      startNetworkAction(NetworkAction::PUSH);
++      break;
++    case MenuAction::CONFIGURE:
++      startActivityForResult(std::make_unique<AnkiSettingsActivity>(renderer, mappedInput),
++                             [this](const ActivityResult&) {
++                               std::string error;
++                               if (!ANKI_STORE.load(error)) {
++                                 state = State::ERROR;
++                                 message = error;
++                               } else {
++                                 state = State::MENU;
++                                 rebuildMenu();
++                               }
++                               requestUpdate();
++                             });
++      break;
++  }
++}
++
++void AnkiActivity::startNetworkAction(const NetworkAction action) {
++  if (!ANKI_STORE.configured()) {
++    state = State::MESSAGE;
++    message = tr(STR_ANKI_CONFIGURE_FIRST);
++    restartOnDismiss = false;
++    requestUpdate();
++    return;
++  }
++
++  networkAction = action;
++  wifiActivated = true;
++  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
++                         [this](const ActivityResult& result) {
++                           onWifiSelectionComplete(!result.isCancelled && WiFi.status() == WL_CONNECTED);
++                         });
++}
++
++void AnkiActivity::onWifiSelectionComplete(const bool success) {
++  if (!success) {
++    state = State::ERROR;
++    message = tr(STR_WIFI_CONN_FAILED);
++    restartOnDismiss = true;
++    requestUpdate();
++    return;
++  }
++  performNetworkAction();
++}
++
++void AnkiActivity::performNetworkAction() {
++  state = State::WORKING;
++  message = networkAction == NetworkAction::PULL ? tr(STR_ANKI_PULLING) : tr(STR_ANKI_PUSHING);
++  detail.clear();
++  requestUpdateAndWait();
++
++  const AnkiSyncClient::Error result =
++      networkAction == NetworkAction::PULL ? AnkiSyncClient::pull(detail) : AnkiSyncClient::push(detail);
++  WiFi.disconnect(false);
++  esp_wifi_stop();
++
++  if (result == AnkiSyncClient::Error::OK) {
++    std::string loadError;
++    if (!ANKI_STORE.load(loadError)) {
++      state = State::ERROR;
++      message = loadError;
++    } else {
++      state = State::MESSAGE;
++      message = networkAction == NetworkAction::PULL ? tr(STR_ANKI_PULL_OK) : tr(STR_ANKI_PUSH_OK);
++    }
++  } else {
++    state = State::ERROR;
++    message = AnkiSyncClient::errorString(result);
++    if (!detail.empty() && detail.size() < 512) message += "\n" + detail;
++  }
++  restartOnDismiss = true;
++  networkAction = NetworkAction::NONE;
++  requestUpdate();
++}
++
++void AnkiActivity::startReview() {
++  if (!loadCurrentCard()) return;
++  state = State::QUESTION;
++  cardStartedAt = millis();
++  requestUpdate();
++}
++
++bool AnkiActivity::loadCurrentCard() {
++  std::string error;
++  if (!ANKI_STORE.loadCurrentCard(currentCard, error)) {
++    state = State::ERROR;
++    message = error;
++    restartOnDismiss = false;
++    requestUpdate();
++    return false;
++  }
++  resetPaging();
++  return true;
++}
++
++void AnkiActivity::showAnswer() {
++  state = State::ANSWER;
++  resetPaging();
++  requestUpdate();
++}
++
++void AnkiActivity::grade(const uint8_t ease) {
++  const uint32_t elapsed = std::min<uint32_t>(millis() - cardStartedAt, 3600000);
++  std::string error;
++  if (!ANKI_STORE.recordReview(ease, elapsed, error)) {
++    state = State::ERROR;
++    message = error;
++    restartOnDismiss = false;
++    requestUpdate();
++    return;
++  }
++
++  if (ANKI_STORE.hasRemainingCards()) {
++    if (!loadCurrentCard()) return;
++    state = State::QUESTION;
++    cardStartedAt = millis();
++  } else {
++    state = State::MESSAGE;
++    message = tr(STR_ANKI_OFFLINE_DONE);
++    restartOnDismiss = false;
++  }
++  requestUpdate();
++}
++
++void AnkiActivity::resetPaging() {
++  pageStart = 0;
++  nextPageStart = 0;
++  pageHistory.clear();
++}
++
++void AnkiActivity::nextPage() {
++  const std::string& text = state == State::ANSWER ? currentCard.back : currentCard.front;
++  if (nextPageStart > pageStart && nextPageStart < text.size()) {
++    pageHistory.push_back(pageStart);
++    pageStart = nextPageStart;
++    requestUpdate();
++  }
++}
++
++void AnkiActivity::previousPage() {
++  if (pageHistory.empty()) return;
++  pageStart = pageHistory.back();
++  pageHistory.pop_back();
++  requestUpdate();
++}
++
++void AnkiActivity::handleQuestionPaging() {
++  if (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
++      mappedInput.wasPressed(MappedInputManager::Button::Left)) {
++    previousPage();
++  } else if (mappedInput.wasPressed(MappedInputManager::Button::Down) ||
++             mappedInput.wasPressed(MappedInputManager::Button::Right)) {
++    nextPage();
++  }
++}
++
++void AnkiActivity::handleAnswerPaging() {
++  if (mappedInput.wasPressed(MappedInputManager::Button::Up)) {
++    previousPage();
++  } else if (mappedInput.wasPressed(MappedInputManager::Button::Down)) {
++    nextPage();
++  }
++}
++
++void AnkiActivity::render(RenderLock&&) {
++  switch (state) {
++    case State::MENU:
++      renderMenu();
++      break;
++    case State::QUESTION:
++      renderCard(false);
++      break;
++    case State::ANSWER:
++      renderCard(true);
++      break;
++    case State::WORKING:
++      renderMessage(false);
++      break;
++    case State::MESSAGE:
++      renderMessage(false);
++      break;
++    case State::ERROR:
++      renderMessage(true);
++      break;
++  }
++}
++
++void AnkiActivity::renderMenu() {
++  renderer.clearScreen();
++  const auto& metrics = UITheme::getInstance().getMetrics();
++  const int pageWidth = renderer.getScreenWidth();
++  const int pageHeight = renderer.getScreenHeight();
++  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ANKI));
++
++  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
++  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
++  GUI.drawList(
++      renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(menuActions.size()), selectedIndex,
++      [this](const int index) { return std::string(menuLabel(menuActions[index])); }, nullptr, nullptr,
++      [this](const int index) {
++        char value[48] = {};
++        if (menuActions[index] == MenuAction::LEARN) {
++          snprintf(value, sizeof(value), tr(STR_ANKI_REMAINING_FORMAT),
++                   static_cast<unsigned int>(ANKI_STORE.getRemainingCount()));
++        } else if (menuActions[index] == MenuAction::UPLOAD) {
++          snprintf(value, sizeof(value), "%u", static_cast<unsigned int>(ANKI_STORE.getReviewCount()));
++        }
++        return std::string(value);
++      },
++      true);
++
++  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
++  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
++  renderer.displayBuffer();
++}
++
++size_t AnkiActivity::drawTextPage(const std::string& text, const size_t start, const int x, const int y,
++                                  const int width, const int maxLines, const int lineHeight) {
++  size_t position = std::min(start, text.size());
++  for (int lineNumber = 0; lineNumber < maxLines && position < text.size(); lineNumber++) {
++    while (position < text.size() && (text[position] == ' ' || text[position] == '\t')) position++;
++    if (position >= text.size()) break;
++    if (text[position] == '\n') {
++      position++;
++      continue;
++    }
++
++    const size_t lineStart = position;
++    size_t scan = position;
++    size_t lineEnd = position;
++    size_t nextPosition = position;
++    size_t lastBreak = std::string::npos;
++
++    while (scan < text.size() && text[scan] != '\n') {
++      const size_t next = nextUtf8Boundary(text, scan);
++      if (text[scan] == ' ' || text[scan] == '\t') lastBreak = next;
++      const std::string candidate = text.substr(lineStart, next - lineStart);
++      if (renderer.getTextWidth(UI_12_FONT_ID, candidate.c_str()) > width) {
++        if (lastBreak != std::string::npos && lastBreak > lineStart) {
++          lineEnd = lastBreak;
++          nextPosition = lastBreak;
++        } else if (scan > lineStart) {
++          lineEnd = scan;
++          nextPosition = scan;
++        } else {
++          lineEnd = next;
++          nextPosition = next;
++        }
++        break;
++      }
++      lineEnd = next;
++      nextPosition = next;
++      scan = next;
++    }
++
++    if (scan < text.size() && text[scan] == '\n' && nextPosition == scan) nextPosition++;
++    std::string line = text.substr(lineStart, lineEnd - lineStart);
++    while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.pop_back();
++    renderer.drawText(UI_12_FONT_ID, x, y + lineNumber * lineHeight, line.c_str());
++    if (nextPosition <= position) nextPosition = nextUtf8Boundary(text, position);
++    position = nextPosition;
++  }
++  return position;
++}
++
++void AnkiActivity::renderCard(const bool answer) {
++  renderer.clearScreen();
++  const auto& metrics = UITheme::getInstance().getMetrics();
++  const int pageWidth = renderer.getScreenWidth();
++  const int pageHeight = renderer.getScreenHeight();
++  const char* side = answer ? tr(STR_ANKI_ANSWER) : tr(STR_ANKI_QUESTION);
++
++  char header[96];
++  snprintf(header, sizeof(header), "%s · %u", side, static_cast<unsigned int>(ANKI_STORE.getRemainingCount()));
++  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, header);
++
++  const int x = metrics.contentSidePadding;
++  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
++  const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID) + 3;
++  const int footerHeight = metrics.buttonHintsHeight + renderer.getLineHeight(SMALL_FONT_ID) + metrics.verticalSpacing;
++  const int availableHeight = pageHeight - contentTop - footerHeight;
++  const int maxLines = std::max(1, availableHeight / lineHeight);
++  const std::string& text = answer ? currentCard.back : currentCard.front;
++  nextPageStart = drawTextPage(text, pageStart, x, contentTop, pageWidth - 2 * x, maxLines, lineHeight);
++
++  std::string paging;
++  if (!pageHistory.empty()) paging += "< ";
++  paging += tr(STR_ANKI_SIDE_PAGES);
++  if (nextPageStart < text.size()) paging += " >";
++  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - metrics.buttonHintsHeight - lineHeight, paging.c_str());
++
++  MappedInputManager::Labels labels;
++  if (answer) {
++    labels = mappedInput.mapLabels(tr(STR_ANKI_AGAIN), tr(STR_ANKI_GOOD), tr(STR_ANKI_HARD), tr(STR_ANKI_EASY));
++  } else {
++    labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_ANKI_ANSWER), "", "");
++  }
++  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
++  renderer.displayBuffer();
++}
++
++void AnkiActivity::renderMessage(const bool error) {
++  renderer.clearScreen();
++  const auto& metrics = UITheme::getInstance().getMetrics();
++  const int pageWidth = renderer.getScreenWidth();
++  const int pageHeight = renderer.getScreenHeight();
++  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ANKI));
++
++  const int x = metrics.contentSidePadding;
++  const int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 3;
++  const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID) + 4;
++  const int maxLines = std::max(1, (pageHeight - y - metrics.buttonHintsHeight - metrics.verticalSpacing) / lineHeight);
++  drawTextPage(message, 0, x, y, pageWidth - 2 * x, maxLines, lineHeight);
++
++  if (state != State::WORKING) {
++    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_DONE), "", "");
++    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
++  }
++  renderer.displayBuffer();
++}
+diff --git a/src/activities/anki/AnkiActivity.h b/src/activities/anki/AnkiActivity.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..7c5db51d913226117acbb84964b693ba7691758e
+--- /dev/null
++++ b/src/activities/anki/AnkiActivity.h
+@@ -0,0 +1,64 @@
++#pragma once
++
++#include <cstddef>
++#include <cstdint>
++#include <string>
++#include <vector>
++
++#include "activities/Activity.h"
++#include "anki/AnkiStore.h"
++#include "util/ButtonNavigator.h"
++
++class AnkiActivity final : public Activity {
++ public:
++  enum class MenuAction { LEARN, DOWNLOAD, UPLOAD, CONFIGURE };
++
++  explicit AnkiActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
++      : Activity("Anki", renderer, mappedInput) {}
++
++  void onEnter() override;
++  void onExit() override;
++  void loop() override;
++  void render(RenderLock&&) override;
++  bool preventAutoSleep() override;
++
++ private:
++  enum class State { MENU, WORKING, QUESTION, ANSWER, MESSAGE, ERROR };
++  enum class NetworkAction { NONE, PULL, PUSH };
++
++  State state = State::MENU;
++  NetworkAction networkAction = NetworkAction::NONE;
++  ButtonNavigator buttonNavigator;
++  std::vector<MenuAction> menuActions;
++  int selectedIndex = 0;
++  AnkiCard currentCard;
++  std::string message;
++  std::string detail;
++  bool restartOnDismiss = false;
++  bool wifiActivated = false;
++  uint32_t cardStartedAt = 0;
++
++  size_t pageStart = 0;
++  size_t nextPageStart = 0;
++  std::vector<size_t> pageHistory;
++
++  void rebuildMenu();
++  void handleMenuSelection();
++  void startNetworkAction(NetworkAction action);
++  void onWifiSelectionComplete(bool success);
++  void performNetworkAction();
++  void startReview();
++  void showAnswer();
++  void grade(uint8_t ease);
++  bool loadCurrentCard();
++  void resetPaging();
++  void handleQuestionPaging();
++  void handleAnswerPaging();
++  void nextPage();
++  void previousPage();
++
++  void renderMenu();
++  void renderCard(bool answer);
++  void renderMessage(bool error);
++  size_t drawTextPage(const std::string& text, size_t start, int x, int y, int width, int maxLines, int lineHeight);
++};
+diff --git a/src/activities/anki/AnkiSettingsActivity.cpp b/src/activities/anki/AnkiSettingsActivity.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..6f7334f0229e1517e4e743cba4787cf4bb46ba76
+--- /dev/null
++++ b/src/activities/anki/AnkiSettingsActivity.cpp
+@@ -0,0 +1,131 @@
++#include "AnkiSettingsActivity.h"
++
++#include <GfxRenderer.h>
++#include <I18n.h>
++
++#include <variant>
++
++#include "activities/util/ConfirmationActivity.h"
++#include "activities/util/KeyboardEntryActivity.h"
++#include "anki/AnkiStore.h"
++#include "components/UITheme.h"
++#include "fontIds.h"
++
++namespace {
++const StrId MENU_NAMES[3] = {
++    StrId::STR_ANKI_SERVER_URL,
++    StrId::STR_ANKI_API_TOKEN,
++    StrId::STR_ANKI_CLEAR_LOCAL,
++};
++}  // namespace
++
++void AnkiSettingsActivity::onEnter() {
++  Activity::onEnter();
++  selectedIndex = 0;
++  statusMessage.clear();
++  std::string error;
++  if (!ANKI_STORE.load(error)) statusMessage = error;
++  requestUpdate();
++}
++
++void AnkiSettingsActivity::loop() {
++  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
++    finish();
++    return;
++  }
++  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
++    handleSelection();
++    return;
++  }
++
++  buttonNavigator.onNext([this] {
++    selectedIndex = ButtonNavigator::nextIndex(selectedIndex, MENU_ITEMS);
++    statusMessage.clear();
++    requestUpdate();
++  });
++  buttonNavigator.onPrevious([this] {
++    selectedIndex = ButtonNavigator::previousIndex(selectedIndex, MENU_ITEMS);
++    statusMessage.clear();
++    requestUpdate();
++  });
++}
++
++void AnkiSettingsActivity::saveConfig() {
++  std::string error;
++  statusMessage = ANKI_STORE.saveConfig(error) ? "" : error;
++  requestUpdate();
++}
++
++void AnkiSettingsActivity::handleSelection() {
++  if (selectedIndex == 0) {
++    const std::string current = ANKI_STORE.getServerUrl();
++    const std::string initial = current.empty() ? "http://192.168." : current;
++    startActivityForResult(
++        std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_ANKI_SERVER_URL), initial, 160,
++                                                InputType::Url),
++        [this](const ActivityResult& result) {
++          if (result.isCancelled) return;
++          const auto& keyboard = std::get<KeyboardResult>(result.data);
++          ANKI_STORE.setServerUrl(keyboard.text == "http://" || keyboard.text == "https://" ? "" : keyboard.text);
++          saveConfig();
++        });
++    return;
++  }
++
++  if (selectedIndex == 1) {
++    startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_ANKI_API_TOKEN),
++                                                                   ANKI_STORE.getApiToken(), 160, InputType::Password),
++                           [this](const ActivityResult& result) {
++                             if (result.isCancelled) return;
++                             const auto& keyboard = std::get<KeyboardResult>(result.data);
++                             ANKI_STORE.setApiToken(keyboard.text);
++                             saveConfig();
++                           });
++    return;
++  }
++
++  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_ANKI_CLEAR_LOCAL),
++                                                                tr(STR_ANKI_CLEAR_CONFIRM)),
++                         [this](const ActivityResult& result) {
++                           if (result.isCancelled) return;
++                           std::string error;
++                           statusMessage = ANKI_STORE.clearSession(error) ? tr(STR_ANKI_LOCAL_CLEARED) : error;
++                           requestUpdate();
++                         });
++}
++
++void AnkiSettingsActivity::render(RenderLock&&) {
++  renderer.clearScreen();
++
++  const auto& metrics = UITheme::getInstance().getMetrics();
++  const auto pageWidth = renderer.getScreenWidth();
++  const auto pageHeight = renderer.getScreenHeight();
++  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ANKI_SETTINGS));
++
++  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
++  const int statusHeight = statusMessage.empty() ? 0 : renderer.getLineHeight(SMALL_FONT_ID) + metrics.verticalSpacing;
++  const int contentHeight =
++      pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2 - statusHeight;
++
++  GUI.drawList(
++      renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
++      [](const int index) { return std::string(I18N.get(MENU_NAMES[index])); }, nullptr, nullptr,
++      [](const int index) {
++        if (index == 0) {
++          return ANKI_STORE.getServerUrl().empty() ? std::string(tr(STR_NOT_SET)) : ANKI_STORE.getServerUrl();
++        }
++        if (index == 1) {
++          return ANKI_STORE.getApiToken().empty() ? std::string(tr(STR_NOT_SET)) : std::string("******");
++        }
++        return std::string("");
++      },
++      true);
++
++  if (!statusMessage.empty()) {
++    renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - metrics.buttonHintsHeight - statusHeight,
++                              statusMessage.c_str());
++  }
++  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
++  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
++  renderer.displayBuffer();
++}
+diff --git a/src/activities/anki/AnkiSettingsActivity.h b/src/activities/anki/AnkiSettingsActivity.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..0c5a2861379446f61f14b52382eaf83d43881367
+--- /dev/null
++++ b/src/activities/anki/AnkiSettingsActivity.h
+@@ -0,0 +1,25 @@
++#pragma once
++
++#include <string>
++
++#include "activities/Activity.h"
++#include "util/ButtonNavigator.h"
++
++class AnkiSettingsActivity final : public Activity {
++ public:
++  explicit AnkiSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
++      : Activity("AnkiSettings", renderer, mappedInput) {}
++
++  void onEnter() override;
++  void loop() override;
++  void render(RenderLock&&) override;
++
++ private:
++  static constexpr int MENU_ITEMS = 3;
++  ButtonNavigator buttonNavigator;
++  int selectedIndex = 0;
++  std::string statusMessage;
++
++  void handleSelection();
++  void saveConfig();
++};
+diff --git a/src/activities/home/HomeActivity.cpp b/src/activities/home/HomeActivity.cpp
+index 287432643ffe969d84a85878153b6dc20edfffc8..1d09cc6e1d2862d19e83fdefaca22cca750eef5a 100644
+--- a/src/activities/home/HomeActivity.cpp
++++ b/src/activities/home/HomeActivity.cpp
+@@ -21,7 +21,7 @@
+ #include "fontIds.h"
+ 
+ int HomeActivity::getMenuItemCount() const {
+-  int count = 4;  // File Browser, Recents, File transfer, Settings
++  int count = 5;  // File Browser, Recents, Anki, File transfer, Settings
+   if (!recentBooks.empty()) {
+     count += recentBooks.size();
+   }
+@@ -194,6 +194,9 @@ void HomeActivity::loop() {
+         case HomeMenuItem::OPDS_BROWSER:
+           onOpdsBrowserOpen();
+           break;
++        case HomeMenuItem::ANKI:
++          onAnkiOpen();
++          break;
+         case HomeMenuItem::FILE_TRANSFER:
+           onFileTransferOpen();
+           break;
+@@ -231,9 +234,9 @@ void HomeActivity::render(RenderLock&&) {
+                           std::bind(&HomeActivity::storeCoverBuffer, this));
+ 
+   // Build menu items dynamically
+-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
+-                                        tr(STR_SETTINGS_TITLE)};
+-  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings};
++  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_ANKI),
++                                        tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
++  std::vector<UIIcon> menuIcons = {Folder, Recent, Book, Transfer, Settings};
+ 
+   if (hasOpdsServers) {
+     menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
+@@ -281,3 +284,5 @@ void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
+ void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
+ 
+ void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
++
++void HomeActivity::onAnkiOpen() { activityManager.goToAnki(); }
+diff --git a/src/activities/home/HomeActivity.h b/src/activities/home/HomeActivity.h
+index 6d170cddc3ff249edd4cf9632fc6e81ab11a1c16..6c055513dca2bc9ed49b182f95d8a7c3073e5bbe 100644
+--- a/src/activities/home/HomeActivity.h
++++ b/src/activities/home/HomeActivity.h
+@@ -39,6 +39,8 @@ class HomeActivity final : public Activity {
+     ++i;
+     if (item == HomeMenuItem::OPDS_BROWSER) return hasOpdsUrl ? i : 0;
+     if (hasOpdsUrl) ++i;
++    if (item == HomeMenuItem::ANKI) return i;
++    ++i;
+     if (item == HomeMenuItem::FILE_TRANSFER) return i;
+     ++i;
+     if (item == HomeMenuItem::SETTINGS_MENU) return i;
+@@ -51,6 +53,7 @@ class HomeActivity final : public Activity {
+     if (idx == i++) return HomeMenuItem::FILE_BROWSER;
+     if (idx == i++) return HomeMenuItem::RECENTS;
+     if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
++    if (idx == i++) return HomeMenuItem::ANKI;
+     if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
+     if (idx == i) return HomeMenuItem::SETTINGS_MENU;
+     return HomeMenuItem::NONE;
+@@ -61,6 +64,7 @@ class HomeActivity final : public Activity {
+   void onSettingsOpen();
+   void onFileTransferOpen();
+   void onOpdsBrowserOpen();
++  void onAnkiOpen();
+ 
+   int getMenuItemCount() const;
+   bool storeCoverBuffer();    // Store frame buffer for cover image
+diff --git a/src/anki/AnkiStore.cpp b/src/anki/AnkiStore.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..fc32287a8731b7a85849dbc09e868bc25241bd0f
+--- /dev/null
++++ b/src/anki/AnkiStore.cpp
+@@ -0,0 +1,421 @@
++#include "AnkiStore.h"
++
++#include <ArduinoJson.h>
++#include <HalStorage.h>
++#include <Logging.h>
++#include <ObfuscationUtils.h>
++
++#include <algorithm>
++#include <cctype>
++#include <cstdlib>
++#include <limits>
++
++namespace {
++bool readLine(HalFile& file, std::string& line, const size_t maxBytes, bool& tooLong) {
++  line.clear();
++  tooLong = false;
++  bool readAnything = false;
++
++  while (file.available()) {
++    const int value = file.read();
++    if (value < 0) break;
++    readAnything = true;
++    if (value == '\n') return true;
++    if (value == '\r') continue;
++    if (line.size() < maxBytes) {
++      line.push_back(static_cast<char>(value));
++    } else {
++      tooLong = true;
++    }
++  }
++  return readAnything;
++}
++
++std::string trim(std::string value) {
++  const auto first =
++      std::find_if_not(value.begin(), value.end(), [](const unsigned char c) { return std::isspace(c); });
++  const auto last =
++      std::find_if_not(value.rbegin(), value.rend(), [](const unsigned char c) { return std::isspace(c); }).base();
++  if (first >= last) return {};
++  return std::string(first, last);
++}
++
++bool parseCardId(const JsonVariantConst& value, uint64_t& id) {
++  if (value.is<const char*>()) {
++    const char* text = value.as<const char*>();
++    if (!text || !*text) return false;
++    char* end = nullptr;
++    const unsigned long long parsed = strtoull(text, &end, 10);
++    if (!end || *end != '\0' || parsed == 0) return false;
++    id = static_cast<uint64_t>(parsed);
++    return true;
++  }
++
++  if (value.is<uint64_t>()) {
++    id = value.as<uint64_t>();
++    return id != 0;
++  }
++  return false;
++}
++}  // namespace
++
++AnkiStore& AnkiStore::getInstance() {
++  static AnkiStore instance;
++  return instance;
++}
++
++bool AnkiStore::load(std::string& error) {
++  error.clear();
++  if (!loadConfig(error)) return false;
++  return loadSession(error);
++}
++
++bool AnkiStore::loadConfig(std::string& error) {
++  serverUrl.clear();
++  apiToken.clear();
++  if (!Storage.exists(CONFIG_PATH)) return true;
++
++  const String json = Storage.readFile(CONFIG_PATH);
++  if (json.isEmpty()) {
++    error = "Could not read Anki configuration";
++    return false;
++  }
++
++  JsonDocument doc;
++  const DeserializationError parseError = deserializeJson(doc, json);
++  if (parseError) {
++    error = std::string("Invalid Anki configuration: ") + parseError.c_str();
++    return false;
++  }
++
++  serverUrl = doc["server_url"] | std::string("");
++  bool tokenOk = false;
++  apiToken = obfuscation::deobfuscateFromBase64(doc["api_token_obf"] | "", &tokenOk);
++  if (!tokenOk) apiToken = doc["api_token"] | std::string("");
++  setServerUrl(serverUrl);
++  setApiToken(apiToken);
++  return true;
++}
++
++bool AnkiStore::saveConfig(std::string& error) const {
++  JsonDocument doc;
++  doc["server_url"] = serverUrl;
++  doc["api_token_obf"] = obfuscation::obfuscateToBase64(apiToken);
++
++  String json;
++  serializeJson(doc, json);
++  if (!Storage.writeFile(CONFIG_PATH, json)) {
++    error = "Could not save Anki configuration";
++    return false;
++  }
++  error.clear();
++  return true;
++}
++
++bool AnkiStore::configured() const { return !serverUrl.empty() && !apiToken.empty(); }
++
++void AnkiStore::setServerUrl(std::string value) {
++  serverUrl = trim(std::move(value));
++  while (serverUrl.size() > 8 && serverUrl.back() == '/') serverUrl.pop_back();
++}
++
++void AnkiStore::setApiToken(std::string value) { apiToken = trim(std::move(value)); }
++
++void AnkiStore::resetSessionState() {
++  batchId.clear();
++  cardCount = 0;
++  cursor = 0;
++  reviewCount = 0;
++  queue.clear();
++}
++
++bool AnkiStore::loadSession(std::string& error) {
++  resetSessionState();
++  if (!Storage.exists(STATE_PATH)) return true;
++
++  const String json = Storage.readFile(STATE_PATH);
++  if (json.isEmpty()) {
++    error = "Could not read local Anki state";
++    return false;
++  }
++
++  JsonDocument doc;
++  const DeserializationError parseError = deserializeJson(doc, json);
++  if (parseError) {
++    error = std::string("Invalid local Anki state: ") + parseError.c_str();
++    return false;
++  }
++
++  batchId = doc["batch_id"] | std::string("");
++  cardCount = doc["card_count"] | static_cast<uint16_t>(0);
++  cursor = doc["cursor"] | static_cast<uint16_t>(0);
++  reviewCount = doc["review_count"] | static_cast<uint16_t>(0);
++
++  if (batchId.empty() || cardCount > MAX_CARDS || !Storage.exists(CARDS_PATH) || !Storage.exists(INDEX_PATH)) {
++    error = "Local Anki batch is incomplete";
++    resetSessionState();
++    return false;
++  }
++
++  const JsonArrayConst savedQueue = doc["queue"];
++  if (savedQueue.isNull() || savedQueue.size() > std::numeric_limits<uint16_t>::max()) {
++    error = "Local Anki queue is invalid";
++    resetSessionState();
++    return false;
++  }
++
++  queue.reserve(savedQueue.size());
++  for (const JsonVariantConst value : savedQueue) {
++    const uint16_t cardIndex = value.as<uint16_t>();
++    if (cardIndex >= cardCount) {
++      error = "Local Anki queue contains an invalid card";
++      resetSessionState();
++      return false;
++    }
++    queue.push_back(cardIndex);
++  }
++  if (cursor > queue.size()) {
++    error = "Local Anki queue position is invalid";
++    resetSessionState();
++    return false;
++  }
++  return true;
++}
++
++bool AnkiStore::saveSession(std::string& error) const {
++  JsonDocument doc;
++  doc["batch_id"] = batchId;
++  doc["card_count"] = cardCount;
++  doc["cursor"] = cursor;
++  doc["review_count"] = reviewCount;
++  JsonArray savedQueue = doc["queue"].to<JsonArray>();
++  for (const uint16_t cardIndex : queue) savedQueue.add(cardIndex);
++
++  String json;
++  serializeJson(doc, json);
++  if (!Storage.writeFile(STATE_PATH, json)) {
++    error = "Could not save local Anki state";
++    return false;
++  }
++  error.clear();
++  return true;
++}
++
++bool AnkiStore::installPulledBatch(std::string& error) {
++  HalFile cards;
++  if (!Storage.openFileForRead("ANKI", PULL_TEMP_PATH, cards)) {
++    error = "Downloaded Anki batch is missing";
++    return false;
++  }
++
++  Storage.remove(INDEX_TEMP_PATH);
++  HalFile index;
++  if (!Storage.openFileForWrite("ANKI", INDEX_TEMP_PATH, index)) {
++    error = "Could not create Anki card index";
++    return false;
++  }
++
++  std::string line;
++  bool tooLong = false;
++  if (!readLine(cards, line, MAX_CARD_LINE_BYTES, tooLong) || tooLong) {
++    error = "Invalid Anki batch header";
++    return false;
++  }
++
++  JsonDocument meta;
++  DeserializationError parseError = deserializeJson(meta, line);
++  const std::string type = meta["type"] | std::string("");
++  const std::string status = meta["status"] | std::string("");
++  const int protocolVersion = meta["protocol_version"] | 0;
++  const uint16_t expectedCount = meta["card_count"] | static_cast<uint16_t>(0);
++  const std::string newBatchId = meta["pull_id"] | std::string("");
++  if (parseError || type != "meta" || status != "success" || protocolVersion != 2 || newBatchId.empty() ||
++      expectedCount > MAX_CARDS) {
++    error = "Unsupported or invalid Anki batch";
++    return false;
++  }
++
++  uint16_t actualCount = 0;
++  bool sawEnd = false;
++  while (cards.available()) {
++    const size_t offsetValue = cards.position();
++    if (offsetValue > std::numeric_limits<uint32_t>::max()) {
++      error = "Anki card file is too large";
++      return false;
++    }
++    if (!readLine(cards, line, MAX_CARD_LINE_BYTES, tooLong)) break;
++    if (tooLong) {
++      error = "Anki card exceeds the device limit";
++      return false;
++    }
++    if (line.empty()) continue;
++
++    JsonDocument doc;
++    parseError = deserializeJson(doc, line);
++    if (parseError) {
++      error = "Anki batch contains invalid JSON";
++      return false;
++    }
++
++    const std::string recordType = doc["type"] | std::string("");
++    if (recordType == "end") {
++      const uint16_t endCount = doc["card_count"] | static_cast<uint16_t>(0);
++      sawEnd = endCount == actualCount;
++      break;
++    }
++    if (recordType != "card" || actualCount >= MAX_CARDS) {
++      error = "Anki batch contains an invalid record";
++      return false;
++    }
++
++    uint64_t id = 0;
++    if (!parseCardId(doc["id"], id) || !doc["front"].is<const char*>() || !doc["back"].is<const char*>()) {
++      error = "Anki batch contains an invalid card";
++      return false;
++    }
++
++    const uint32_t offset = static_cast<uint32_t>(offsetValue);
++    if (index.write(&offset, sizeof(offset)) != sizeof(offset)) {
++      error = "Could not write Anki card index";
++      return false;
++    }
++    actualCount++;
++  }
++
++  cards.close();
++  index.flush();
++  index.close();
++  if (!sawEnd || actualCount != expectedCount) {
++    error = "Anki batch ended unexpectedly";
++    return false;
++  }
++
++  Storage.remove(CARDS_PATH);
++  Storage.remove(INDEX_PATH);
++  Storage.remove(REVIEWS_PATH);
++  Storage.remove(STATE_PATH);
++  if (!Storage.rename(PULL_TEMP_PATH, CARDS_PATH) || !Storage.rename(INDEX_TEMP_PATH, INDEX_PATH)) {
++    error = "Could not install downloaded Anki batch";
++    return false;
++  }
++
++  batchId = newBatchId;
++  cardCount = actualCount;
++  cursor = 0;
++  reviewCount = 0;
++  queue.clear();
++  queue.reserve(cardCount);
++  for (uint16_t indexValue = 0; indexValue < cardCount; indexValue++) queue.push_back(indexValue);
++  return saveSession(error);
++}
++
++bool AnkiStore::loadCardByIndex(const uint16_t cardIndex, AnkiCard& card, std::string& error) const {
++  if (cardIndex >= cardCount) {
++    error = "Anki card index is out of range";
++    return false;
++  }
++
++  HalFile index;
++  if (!Storage.openFileForRead("ANKI", INDEX_PATH, index) ||
++      !index.seek(static_cast<size_t>(cardIndex) * sizeof(uint32_t))) {
++    error = "Could not read Anki card index";
++    return false;
++  }
++
++  uint32_t offset = 0;
++  if (index.read(&offset, sizeof(offset)) != sizeof(offset)) {
++    error = "Anki card index is truncated";
++    return false;
++  }
++  index.close();
++
++  HalFile cards;
++  if (!Storage.openFileForRead("ANKI", CARDS_PATH, cards) || !cards.seek(offset)) {
++    error = "Could not open local Anki cards";
++    return false;
++  }
++
++  std::string line;
++  bool tooLong = false;
++  if (!readLine(cards, line, MAX_CARD_LINE_BYTES, tooLong) || tooLong) {
++    error = "Local Anki card is invalid";
++    return false;
++  }
++
++  JsonDocument doc;
++  const DeserializationError parseError = deserializeJson(doc, line);
++  uint64_t id = 0;
++  if (parseError || (doc["type"] | std::string("")) != "card" || !parseCardId(doc["id"], id) ||
++      !doc["front"].is<const char*>() || !doc["back"].is<const char*>()) {
++    error = "Local Anki card contains invalid data";
++    return false;
++  }
++
++  card.id = id;
++  card.front = doc["front"].as<std::string>();
++  card.back = doc["back"].as<std::string>();
++  card.isLearning = doc["is_learning"] | false;
++  error.clear();
++  return true;
++}
++
++bool AnkiStore::loadCurrentCard(AnkiCard& card, std::string& error) const {
++  if (!hasRemainingCards()) {
++    error = "No Anki cards remain";
++    return false;
++  }
++  return loadCardByIndex(queue[cursor], card, error);
++}
++
++bool AnkiStore::recordReview(const uint8_t ease, const uint32_t durationMs, std::string& error) {
++  if (ease < 1 || ease > 4 || !hasRemainingCards()) {
++    error = "Invalid Anki review";
++    return false;
++  }
++
++  AnkiCard card;
++  if (!loadCurrentCard(card, error)) return false;
++
++  HalFile reviews = Storage.open(REVIEWS_PATH, O_WRONLY | O_CREAT | O_APPEND);
++  if (!reviews) {
++    error = "Could not open the local Anki review log";
++    return false;
++  }
++
++  char row[96];
++  const int length = snprintf(row, sizeof(row), "%llu,%u,,%lu\n", static_cast<unsigned long long>(card.id),
++                              static_cast<unsigned int>(ease), static_cast<unsigned long>(durationMs));
++  if (length <= 0 || static_cast<size_t>(length) >= sizeof(row) ||
++      reviews.write(row, static_cast<size_t>(length)) != static_cast<size_t>(length)) {
++    error = "Could not write the local Anki review log";
++    return false;
++  }
++  reviews.flush();
++  reviews.close();
++
++  const uint16_t reviewedCardIndex = queue[cursor];
++  cursor++;
++  reviewCount++;
++
++  if (ease == 1 || (ease == 2 && card.isLearning)) {
++    const size_t gap = ease == 1 ? 5 : 10;
++    const size_t insertAt = std::min(queue.size(), static_cast<size_t>(cursor) + gap);
++    queue.insert(queue.begin() + insertAt, reviewedCardIndex);
++  }
++
++  return saveSession(error);
++}
++
++bool AnkiStore::clearSession(std::string& error) {
++  bool ok = true;
++  for (const char* path : {STATE_PATH, CARDS_PATH, INDEX_PATH, REVIEWS_PATH, PULL_TEMP_PATH, INDEX_TEMP_PATH}) {
++    if (Storage.exists(path) && !Storage.remove(path)) ok = false;
++  }
++  resetSessionState();
++  if (!ok) {
++    error = "Could not remove all local Anki data";
++    return false;
++  }
++  error.clear();
++  return true;
++}
+diff --git a/src/anki/AnkiStore.h b/src/anki/AnkiStore.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..f87dcfaee76c4f138505896f84c9dbe4deb1b160
+--- /dev/null
++++ b/src/anki/AnkiStore.h
+@@ -0,0 +1,73 @@
++#pragma once
++
++#include <cstdint>
++#include <string>
++#include <vector>
++
++struct AnkiCard {
++  uint64_t id = 0;
++  std::string front;
++  std::string back;
++  bool isLearning = false;
++};
++
++class AnkiStore {
++ public:
++  static constexpr const char* PULL_TEMP_PATH = "/.crosspoint/anki-pull.tmp";
++
++  static AnkiStore& getInstance();
++
++  bool load(std::string& error);
++  bool saveConfig(std::string& error) const;
++  bool configured() const;
++
++  const std::string& getServerUrl() const { return serverUrl; }
++  const std::string& getApiToken() const { return apiToken; }
++  const std::string& getBatchId() const { return batchId; }
++
++  void setServerUrl(std::string value);
++  void setApiToken(std::string value);
++
++  bool installPulledBatch(std::string& error);
++  bool loadCurrentCard(AnkiCard& card, std::string& error) const;
++  bool recordReview(uint8_t ease, uint32_t durationMs, std::string& error);
++  bool clearSession(std::string& error);
++
++  bool hasBatch() const { return cardCount > 0; }
++  bool hasRemainingCards() const { return cursor < queue.size(); }
++  bool hasPendingReviews() const { return reviewCount > 0; }
++  bool batchComplete() const { return hasBatch() && !hasRemainingCards(); }
++  uint16_t getCardCount() const { return cardCount; }
++  uint16_t getRemainingCount() const {
++    return cursor < queue.size() ? static_cast<uint16_t>(queue.size() - cursor) : 0;
++  }
++  uint16_t getReviewCount() const { return reviewCount; }
++
++ private:
++  AnkiStore() = default;
++
++  static constexpr const char* CONFIG_PATH = "/.crosspoint/anki-config.json";
++  static constexpr const char* STATE_PATH = "/.crosspoint/anki-state.json";
++  static constexpr const char* CARDS_PATH = "/.crosspoint/anki-cards.ndjson";
++  static constexpr const char* INDEX_PATH = "/.crosspoint/anki-index.bin";
++  static constexpr const char* INDEX_TEMP_PATH = "/.crosspoint/anki-index.tmp";
++  static constexpr const char* REVIEWS_PATH = "/.crosspoint/anki-reviews.csv";
++  static constexpr size_t MAX_CARD_LINE_BYTES = 16384;
++  static constexpr uint16_t MAX_CARDS = 1000;
++
++  std::string serverUrl;
++  std::string apiToken;
++  std::string batchId;
++  uint16_t cardCount = 0;
++  uint16_t cursor = 0;
++  uint16_t reviewCount = 0;
++  std::vector<uint16_t> queue;
++
++  bool loadConfig(std::string& error);
++  bool loadSession(std::string& error);
++  bool saveSession(std::string& error) const;
++  bool loadCardByIndex(uint16_t cardIndex, AnkiCard& card, std::string& error) const;
++  void resetSessionState();
++};
++
++#define ANKI_STORE AnkiStore::getInstance()
+diff --git a/src/anki/AnkiSyncClient.cpp b/src/anki/AnkiSyncClient.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..a98654e363206fd880f3cdc479d832747216125c
+--- /dev/null
++++ b/src/anki/AnkiSyncClient.cpp
+@@ -0,0 +1,264 @@
++#include "AnkiSyncClient.h"
++
++#include <ArduinoJson.h>
++#include <HalStorage.h>
++#include <Logging.h>
++#include <esp_crt_bundle.h>
++#include <esp_http_client.h>
++
++#include <algorithm>
++#include <array>
++
++#include "AnkiStore.h"
++
++int AnkiSyncClient::lastHttpCode = 0;
++
++namespace {
++constexpr int HTTP_BUFFER_SIZE = 2048;
++constexpr int HTTP_TIMEOUT_MS = 30000;
++constexpr int MAX_PULL_BYTES = 2 * 1024 * 1024;
++constexpr size_t MAX_RESPONSE_BYTES = 8192;
++
++bool validBaseUrl(const std::string& value) {
++  const bool supported = value.rfind("http://", 0) == 0 || value.rfind("https://", 0) == 0;
++  return supported && value.find_first_of(" \t\r\n") == std::string::npos;
++}
++
++esp_http_client_handle_t createClient(const std::string& url, const esp_http_client_method_t method) {
++  esp_http_client_config_t config = {};
++  config.url = url.c_str();
++  config.method = method;
++  config.timeout_ms = HTTP_TIMEOUT_MS;
++  config.buffer_size = HTTP_BUFFER_SIZE;
++  config.buffer_size_tx = HTTP_BUFFER_SIZE;
++  config.crt_bundle_attach = esp_crt_bundle_attach;
++  return esp_http_client_init(&config);
++}
++
++bool setCommonHeaders(const esp_http_client_handle_t client, const char* accept) {
++  const std::string authorization = "Bearer " + ANKI_STORE.getApiToken();
++  return esp_http_client_set_header(client, "Authorization", authorization.c_str()) == ESP_OK &&
++         esp_http_client_set_header(client, "Accept", accept) == ESP_OK &&
++         esp_http_client_set_header(client, "User-Agent", "CrossPoint-Anki/" CROSSPOINT_VERSION) == ESP_OK;
++}
++
++void closeClient(const esp_http_client_handle_t client) {
++  if (!client) return;
++  esp_http_client_close(client);
++  esp_http_client_cleanup(client);
++}
++
++bool readResponse(const esp_http_client_handle_t client, std::string& response) {
++  std::array<char, 512> buffer;
++  response.clear();
++  while (true) {
++    const int read = esp_http_client_read(client, buffer.data(), buffer.size());
++    if (read < 0) return false;
++    if (read == 0) break;
++    if (response.size() + static_cast<size_t>(read) > MAX_RESPONSE_BYTES) return false;
++    response.append(buffer.data(), static_cast<size_t>(read));
++  }
++  return true;
++}
++}  // namespace
++
++AnkiSyncClient::Error AnkiSyncClient::pull(std::string& detail) {
++  lastHttpCode = 0;
++  detail.clear();
++  if (!ANKI_STORE.configured()) return Error::NOT_CONFIGURED;
++  if (ANKI_STORE.hasPendingReviews()) return Error::LOCAL_REVIEWS_PENDING;
++  if (!validBaseUrl(ANKI_STORE.getServerUrl())) return Error::INVALID_URL;
++
++  const std::string url = ANKI_STORE.getServerUrl() + "/pull";
++  esp_http_client_handle_t client = createClient(url, HTTP_METHOD_GET);
++  if (!client || !setCommonHeaders(client, "application/x-ndjson")) {
++    closeClient(client);
++    return Error::NETWORK_ERROR;
++  }
++
++  Storage.remove(AnkiStore::PULL_TEMP_PATH);
++  HalFile output;
++  if (!Storage.openFileForWrite("ANKI", AnkiStore::PULL_TEMP_PATH, output)) {
++    closeClient(client);
++    return Error::STORAGE_ERROR;
++  }
++
++  esp_err_t result = esp_http_client_open(client, 0);
++  if (result != ESP_OK) {
++    output.close();
++    Storage.remove(AnkiStore::PULL_TEMP_PATH);
++    closeClient(client);
++    detail = esp_err_to_name(result);
++    return Error::NETWORK_ERROR;
++  }
++
++  const int64_t contentLength = esp_http_client_fetch_headers(client);
++  lastHttpCode = esp_http_client_get_status_code(client);
++  if (lastHttpCode == 401 || lastHttpCode == 403) {
++    output.close();
++    Storage.remove(AnkiStore::PULL_TEMP_PATH);
++    closeClient(client);
++    return Error::AUTH_FAILED;
++  }
++  if (lastHttpCode != 200) {
++    detail = "HTTP " + std::to_string(lastHttpCode);
++    output.close();
++    Storage.remove(AnkiStore::PULL_TEMP_PATH);
++    closeClient(client);
++    return Error::SERVER_ERROR;
++  }
++  if (contentLength > MAX_PULL_BYTES) {
++    output.close();
++    Storage.remove(AnkiStore::PULL_TEMP_PATH);
++    closeClient(client);
++    return Error::RESPONSE_TOO_LARGE;
++  }
++
++  std::array<uint8_t, HTTP_BUFFER_SIZE> buffer;
++  size_t total = 0;
++  while (true) {
++    const int read = esp_http_client_read(client, reinterpret_cast<char*>(buffer.data()), buffer.size());
++    if (read < 0) {
++      output.close();
++      Storage.remove(AnkiStore::PULL_TEMP_PATH);
++      closeClient(client);
++      return Error::NETWORK_ERROR;
++    }
++    if (read == 0) break;
++    total += static_cast<size_t>(read);
++    if (total > MAX_PULL_BYTES || output.write(buffer.data(), static_cast<size_t>(read)) != static_cast<size_t>(read)) {
++      output.close();
++      Storage.remove(AnkiStore::PULL_TEMP_PATH);
++      closeClient(client);
++      return total > MAX_PULL_BYTES ? Error::RESPONSE_TOO_LARGE : Error::STORAGE_ERROR;
++    }
++  }
++
++  const bool complete = esp_http_client_is_complete_data_received(client);
++  output.flush();
++  output.close();
++  closeClient(client);
++  if (!complete || total == 0) {
++    Storage.remove(AnkiStore::PULL_TEMP_PATH);
++    return Error::NETWORK_ERROR;
++  }
++
++  if (!ANKI_STORE.installPulledBatch(detail)) {
++    Storage.remove(AnkiStore::PULL_TEMP_PATH);
++    return Error::PROTOCOL_ERROR;
++  }
++  return Error::OK;
++}
++
++AnkiSyncClient::Error AnkiSyncClient::push(std::string& detail) {
++  lastHttpCode = 0;
++  detail.clear();
++  if (!ANKI_STORE.configured()) return Error::NOT_CONFIGURED;
++  if (!ANKI_STORE.hasPendingReviews()) return Error::NO_REVIEWS;
++  if (!validBaseUrl(ANKI_STORE.getServerUrl())) return Error::INVALID_URL;
++
++  HalFile reviews = Storage.open("/.crosspoint/anki-reviews.csv", O_RDONLY);
++  if (!reviews) return Error::STORAGE_ERROR;
++  const size_t contentLength = reviews.size();
++  if (contentLength == 0) return Error::NO_REVIEWS;
++
++  const std::string url = ANKI_STORE.getServerUrl() + "/push";
++  esp_http_client_handle_t client = createClient(url, HTTP_METHOD_POST);
++  if (!client || !setCommonHeaders(client, "application/json") ||
++      esp_http_client_set_header(client, "Content-Type", "text/csv; charset=utf-8") != ESP_OK ||
++      esp_http_client_set_header(client, "X-Xteink-Batch-ID", ANKI_STORE.getBatchId().c_str()) != ESP_OK) {
++    closeClient(client);
++    return Error::NETWORK_ERROR;
++  }
++
++  esp_err_t result = esp_http_client_open(client, contentLength);
++  if (result != ESP_OK) {
++    closeClient(client);
++    detail = esp_err_to_name(result);
++    return Error::NETWORK_ERROR;
++  }
++
++  std::array<uint8_t, HTTP_BUFFER_SIZE> buffer;
++  while (reviews.available()) {
++    const int read = reviews.read(buffer.data(), buffer.size());
++    if (read <= 0) {
++      closeClient(client);
++      return Error::STORAGE_ERROR;
++    }
++
++    int written = 0;
++    while (written < read) {
++      const int chunk = esp_http_client_write(client, reinterpret_cast<const char*>(buffer.data()) + written,
++                                              static_cast<int>(read) - written);
++      if (chunk <= 0) {
++        closeClient(client);
++        return Error::NETWORK_ERROR;
++      }
++      written += chunk;
++    }
++  }
++  reviews.close();
++
++  esp_http_client_fetch_headers(client);
++  lastHttpCode = esp_http_client_get_status_code(client);
++  std::string response;
++  const bool responseRead = readResponse(client, response);
++  closeClient(client);
++
++  if (lastHttpCode == 401 || lastHttpCode == 403) return Error::AUTH_FAILED;
++  if (lastHttpCode != 200) {
++    detail = "HTTP " + std::to_string(lastHttpCode);
++    return Error::SERVER_ERROR;
++  }
++  if (!responseRead) return Error::RESPONSE_TOO_LARGE;
++
++  JsonDocument doc;
++  const DeserializationError parseError = deserializeJson(doc, response);
++  if (parseError) {
++    detail = parseError.c_str();
++    return Error::PROTOCOL_ERROR;
++  }
++
++  const std::string status = doc["status"] | std::string("");
++  if (status == "partial") {
++    detail = response;
++    return Error::PARTIAL_RESPONSE;
++  }
++  if (status != "success" && status != "duplicate") {
++    detail = response;
++    return Error::PROTOCOL_ERROR;
++  }
++
++  if (!ANKI_STORE.clearSession(detail)) return Error::STORAGE_ERROR;
++  return Error::OK;
++}
++
++const char* AnkiSyncClient::errorString(const Error error) {
++  switch (error) {
++    case Error::OK:
++      return "Success";
++    case Error::NOT_CONFIGURED:
++      return "Mac server URL or API token is missing";
++    case Error::LOCAL_REVIEWS_PENDING:
++      return "Upload pending reviews before downloading a new batch";
++    case Error::NO_REVIEWS:
++      return "No reviews to upload";
++    case Error::INVALID_URL:
++      return "Server URL must begin with http:// or https://";
++    case Error::NETWORK_ERROR:
++      return "Network connection failed";
++    case Error::AUTH_FAILED:
++      return "API token was rejected";
++    case Error::SERVER_ERROR:
++      return "Mac Anki server returned an error";
++    case Error::PROTOCOL_ERROR:
++      return "Invalid response from Mac Anki server";
++    case Error::STORAGE_ERROR:
++      return "SD card write failed";
++    case Error::RESPONSE_TOO_LARGE:
++      return "Server response is too large";
++    case Error::PARTIAL_RESPONSE:
++      return "Some reviews were rejected";
++  }
++  return "Unknown Anki sync error";
++}
+diff --git a/src/anki/AnkiSyncClient.h b/src/anki/AnkiSyncClient.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..87f5a79f822ff6cc21b741e563412d47c9b9b44b
+--- /dev/null
++++ b/src/anki/AnkiSyncClient.h
+@@ -0,0 +1,26 @@
++#pragma once
++
++#include <string>
++
++class AnkiSyncClient {
++ public:
++  enum class Error {
++    OK = 0,
++    NOT_CONFIGURED,
++    LOCAL_REVIEWS_PENDING,
++    NO_REVIEWS,
++    INVALID_URL,
++    NETWORK_ERROR,
++    AUTH_FAILED,
++    SERVER_ERROR,
++    PROTOCOL_ERROR,
++    STORAGE_ERROR,
++    RESPONSE_TOO_LARGE,
++    PARTIAL_RESPONSE,
++  };
++
++  static Error pull(std::string& detail);
++  static Error push(std::string& detail);
++  static const char* errorString(Error error);
++  static int lastHttpCode;
++};

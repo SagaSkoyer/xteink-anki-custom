@@ -34,10 +34,17 @@ from aqt.operations import CollectionOp, QueryOp
 from aqt.qt import QAction, QTimer, qconnect
 from aqt.utils import showInfo
 
-from .protocol import ProtocolError, PushBatch, Review, parse_push_payload
+from .protocol import (
+    PULL_NDJSON_MIME,
+    ProtocolError,
+    PushBatch,
+    Review,
+    encode_pull_ndjson,
+    parse_push_payload,
+)
 
 
-ADDON_VERSION = "2.0.0"
+ADDON_VERSION = "2.1.0"
 PROTOCOL_VERSION = 2
 LOGGER = logging.getLogger(__name__)
 
@@ -271,6 +278,31 @@ class XteinkAPIHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             LOGGER.info("Client disconnected before receiving the response")
 
+    def _send_pull(self, payload: Dict[str, Any]) -> None:
+        accepted = self.headers.get("Accept", "")
+        accepted_types = {
+            item.partition(";")[0].strip().lower()
+            for item in accepted.split(",")
+        }
+        if PULL_NDJSON_MIME not in accepted_types:
+            self._send_json(200, payload)
+            return
+
+        encoded = encode_pull_ndjson(payload)
+        self.send_response(200)
+        self.send_header("Content-Type", f"{PULL_NDJSON_MIME}; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        for name, value in self._cors_headers().items():
+            self.send_header(name, value)
+        self.end_headers()
+        self.close_connection = True
+        try:
+            self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError):
+            LOGGER.info("Client disconnected before receiving the pull response")
+
     def _error(self, status: int, code: str, message: str) -> None:
         self._send_json(
             status,
@@ -345,7 +377,7 @@ class XteinkAPIHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            self._send_json(200, self.addon.pull_cards())
+            self._send_pull(self.addon.pull_cards())
         except Exception as error:
             self._handle_operation_error(error)
 

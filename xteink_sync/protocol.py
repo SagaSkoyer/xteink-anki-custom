@@ -7,11 +7,12 @@ import hashlib
 import io
 import json
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Any, Mapping, Optional, Tuple
 
 
 MAX_BATCH_ID_LENGTH = 128
 MAX_DURATION_MS = 3_600_000
+PULL_NDJSON_MIME = "application/x-ndjson"
 
 
 class ProtocolError(ValueError):
@@ -38,6 +39,46 @@ class PushBatch:
     reviews: Tuple[Review, ...]
     legacy_csv: bool
     derived_batch_id: bool
+
+
+def encode_pull_ndjson(payload: Mapping[str, Any]) -> bytes:
+    """Encode a pull response as one bounded JSON object per line.
+
+    The ESP32-C3 can stream this representation directly to its SD card
+    without holding the complete daily card batch in RAM.
+    """
+
+    cards = payload.get("cards")
+    if not isinstance(cards, list):
+        raise ValueError("pull payload cards must be a list")
+
+    meta = {
+        "type": "meta",
+        "status": payload.get("status", "success"),
+        "protocol_version": payload.get("protocol_version"),
+        "pull_id": payload.get("pull_id"),
+        "server_time": payload.get("server_time"),
+        "card_count": len(cards),
+    }
+    lines = [json.dumps(meta, ensure_ascii=False, separators=(",", ":"))]
+    for card in cards:
+        if not isinstance(card, dict):
+            raise ValueError("pull payload cards must contain objects")
+        lines.append(
+            json.dumps(
+                {**card, "type": "card"},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        )
+    lines.append(
+        json.dumps(
+            {"type": "end", "card_count": len(cards)},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    )
+    return ("\n".join(lines) + "\n").encode("utf-8")
 
 
 def _integer(value: Any, field: str, minimum: int, maximum: int) -> int:
