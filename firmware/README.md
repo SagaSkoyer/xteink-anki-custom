@@ -16,6 +16,8 @@ Der Patch ergänzt:
 - Download des Tagesstapels als speicherschonendes NDJSON,
 - persistente Karten, Warteschlange und Bewertungen auf der SD-Karte,
 - Offline-Anzeige von Frage und Antwort mit mehrseitigem Text,
+- deutsche sowie moderne und polytonische griechische Schriftzeichen in der
+  eingebetteten Anki-Schrift,
 - Bewertungen `Nochmal`, `Schwer`, `Gut` und `Einfach`,
 - erneute lokale Einplanung von Lernkarten nach `Nochmal`/`Schwer`,
 - fehlertoleranten Upload mit Batch-ID sowie

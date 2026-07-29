@@ -41,6 +41,9 @@ bequem über **Datentransfer → Netzwerk beitreten** und anschließend
 `http://crosspoint.local/settings` eingetragen. Die Eingabe direkt am X4 bleibt
 als Alternative erhalten.
 
+Der Anki-Kartentext verwendet die eingebettete CrossPoint-UI-Schrift mit
+deutschen sowie modernen und polytonischen griechischen Schriftzeichen.
+
 Die Verbindungseinstellungen bleiben auf der SD-Karte gespeichert. Damit sich
 die IP-Adresse des Macs nicht durch DHCP ändert, sollte sie im Router für den
 Mac reserviert werden.
