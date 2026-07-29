@@ -36,9 +36,14 @@ Offline Sync → Konfiguration** geändert werden.
 
 Für CrossPoint 1.4.1 liegt die gebaute X4-Firmware unter
 `dist/crosspoint-1.4.1-xteink-anki.bin`. Nach dem Flashen erscheint **Anki**
-als eigener Punkt im CrossPoint-Hauptmenü. Dort werden einmalig die
-Mac-Adresse, einschließlich Port `5050`, und der im Anki-Status angezeigte
-API-Token eingetragen.
+als eigener Punkt im CrossPoint-Hauptmenü. Serveradresse und API-Token werden
+bequem über **Datentransfer → Netzwerk beitreten** und anschließend
+`http://crosspoint.local/settings` eingetragen. Die Eingabe direkt am X4 bleibt
+als Alternative erhalten.
+
+Die Verbindungseinstellungen bleiben auf der SD-Karte gespeichert. Damit sich
+die IP-Adresse des Macs nicht durch DHCP ändert, sollte sie im Router für den
+Mac reserviert werden.
 
 Der vollständige, reproduzierbare Build- und Flash-Ablauf steht in
 [`firmware/README.md`](firmware/README.md). Das Firmware-Binary ist nur für den

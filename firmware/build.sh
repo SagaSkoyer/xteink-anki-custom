@@ -3,7 +3,11 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd "${script_dir}/.." && pwd)"
-source_dir="$("${script_dir}/prepare.sh" "${1:-${repo_dir}/.firmware-build/crosspoint-reader-1.4.1}" | tail -n 1)"
+if [[ $# -gt 0 ]]; then
+  source_dir="$("${script_dir}/prepare.sh" "$1" | tail -n 1)"
+else
+  source_dir="$("${script_dir}/prepare.sh" | tail -n 1)"
+fi
 output_file="${repo_dir}/dist/crosspoint-1.4.1-xteink-anki.bin"
 
 if command -v pio >/dev/null 2>&1; then

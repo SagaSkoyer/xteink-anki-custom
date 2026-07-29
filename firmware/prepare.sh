@@ -7,8 +7,18 @@ readonly CROSSPOINT_REPOSITORY="https://github.com/crosspoint-reader/crosspoint-
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd "${script_dir}/.." && pwd)"
-source_dir="${1:-${repo_dir}/.firmware-build/crosspoint-reader-${CROSSPOINT_VERSION}}"
 patch_file="${script_dir}/patches/crosspoint-${CROSSPOINT_VERSION}-anki.patch"
+
+if [[ $# -gt 0 ]]; then
+  source_dir="$1"
+else
+  if command -v shasum >/dev/null 2>&1; then
+    patch_hash="$(shasum -a 256 "${patch_file}" | awk '{print $1}')"
+  else
+    patch_hash="$(sha256sum "${patch_file}" | awk '{print $1}')"
+  fi
+  source_dir="${repo_dir}/.firmware-build/crosspoint-reader-${CROSSPOINT_VERSION}-${patch_hash:0:12}"
+fi
 
 if [[ ! -d "${source_dir}/.git" ]]; then
   mkdir -p "$(dirname "${source_dir}")"

@@ -19,7 +19,8 @@ Der Patch ergänzt:
 - Bewertungen `Nochmal`, `Schwer`, `Gut` und `Einfach`,
 - erneute lokale Einplanung von Lernkarten nach `Nochmal`/`Schwer`,
 - fehlertoleranten Upload mit Batch-ID sowie
-- Eingabe von Mac-Serveradresse und API-Token am X4.
+- Eingabe von Mac-Serveradresse und API-Token am X4 oder komfortabel im
+  CrossPoint-Webzugang.
 
 ## Bauen
 
@@ -36,6 +37,10 @@ Das Skript klont ausschließlich die festgelegte CrossPoint-Version in
 dist/crosspoint-1.4.1-xteink-anki.bin
 ```
 
+Der Checkout-Pfad enthält einen kurzen Hash des Patches. Dadurch bleiben
+aufeinanderfolgende Firmware-Stände getrennt und ein älterer Build-Ordner kann
+keine Konflikte beim Anwenden eines neueren Patches verursachen.
+
 ## Flashen
 
 Die Binärdatei ist für einen Xteink X4 mit dem Partitionslayout von CrossPoint
@@ -47,7 +52,25 @@ Am einfachsten wird sie im offiziellen CrossPoint-Web-Flasher als
 SD-Karte über **Einstellungen → Firmware von SD** installieren. Während des
 Updates müssen Stromversorgung und SD-Karte verbunden bleiben.
 
-## X4 einrichten
+## X4 über den Webzugang einrichten
+
+1. Am X4 **Datentransfer → Netzwerk beitreten** öffnen.
+2. Am Mac die auf dem X4 angezeigte Adresse oder
+   `http://crosspoint.local/settings` öffnen.
+3. Unter **Anki Offline Sync** eintragen:
+   - `Mac server URL`, zum Beispiel `http://192.168.1.23:5050`
+   - `API token` aus **Werkzeuge → Xteink Status** in Anki
+4. **Save Anki settings** wählen.
+
+Das Token ist im Webzugang nur beschreibbar: Ein gespeichertes Token wird
+nicht an den Browser zurückgesendet. Ein leeres Tokenfeld behält den bisherigen
+Wert. Die Daten bleiben auf der SD-Karte über Neustarts hinweg gespeichert.
+
+Die Serveradresse bleibt ebenfalls gespeichert, die IP-Adresse des Macs kann
+sich durch DHCP jedoch ändern. Für eine dauerhaft gleiche Adresse empfiehlt
+sich eine DHCP-Reservierung für den Mac im Router.
+
+## Alternative Eingabe am Gerät
 
 In **Anki → Anki-Einstellungen** werden eingetragen:
 

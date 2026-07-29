@@ -1,3 +1,44 @@
+diff --git a/docs/webserver-endpoints.md b/docs/webserver-endpoints.md
+index bb3c64211d5e72d0791187867e10b4c4fd02023b..6168b159d89eddd88b9e63fb0cfe1bd44bff96bb 100644
+--- a/docs/webserver-endpoints.md
++++ b/docs/webserver-endpoints.md
+@@ -247,6 +247,36 @@ Successful response:
+ Applied 2 setting(s)
+ ```
+ 
++## Anki Offline Sync API
++
++The settings page uses these endpoints to configure the Mac connection without
++typing a long token with the device buttons.
++
++### `GET /api/anki`
++
++Returns the saved server URL and whether a token is present. The API token is
++write-only and is never returned.
++
++```json
++{
++  "serverUrl": "http://192.168.1.23:5050",
++  "hasApiToken": true,
++  "configured": true
++}
++```
++
++### `POST /api/anki`
++
++Updates the persistent Anki connection settings. Omit `apiToken` to preserve
++the existing token.
++
++```bash
++curl -X POST \
++  -H "Content-Type: application/json" \
++  -d '{"serverUrl":"http://192.168.1.23:5050","apiToken":"paste-token-here"}' \
++  http://crosspoint.local/api/anki
++```
++
+ ## Font Management API
+ 
+ ### `GET /api/fonts`
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
 index ecd7b0e058d2e72cc831c5c1d0e180c1aeb88aee..85e9b73929e4f3b02bc0e819f819ff03e5bfa9d0 100644
 --- a/lib/I18n/translations/english.yaml
@@ -919,7 +960,7 @@ index 6d170cddc3ff249edd4cf9632fc6e81ab11a1c16..6c055513dca2bc9ed49b182f95d8a7c3
    bool storeCoverBuffer();    // Store frame buffer for cover image
 diff --git a/src/anki/AnkiStore.cpp b/src/anki/AnkiStore.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..fc32287a8731b7a85849dbc09e868bc25241bd0f
+index 0000000000000000000000000000000000000000..a9d90b077781edbc64ceff021a7a06a81bfe29c5
 --- /dev/null
 +++ b/src/anki/AnkiStore.cpp
 @@ -0,0 +1,421 @@
@@ -991,11 +1032,11 @@ index 0000000000000000000000000000000000000000..fc32287a8731b7a85849dbc09e868bc2
 +
 +bool AnkiStore::load(std::string& error) {
 +  error.clear();
-+  if (!loadConfig(error)) return false;
++  if (!loadConfiguration(error)) return false;
 +  return loadSession(error);
 +}
 +
-+bool AnkiStore::loadConfig(std::string& error) {
++bool AnkiStore::loadConfiguration(std::string& error) {
 +  serverUrl.clear();
 +  apiToken.clear();
 +  if (!Storage.exists(CONFIG_PATH)) return true;
@@ -1346,7 +1387,7 @@ index 0000000000000000000000000000000000000000..fc32287a8731b7a85849dbc09e868bc2
 +}
 diff --git a/src/anki/AnkiStore.h b/src/anki/AnkiStore.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..f87dcfaee76c4f138505896f84c9dbe4deb1b160
+index 0000000000000000000000000000000000000000..cf8403385d2e15d66cabf7e10dc04a4bc1b0e3f8
 --- /dev/null
 +++ b/src/anki/AnkiStore.h
 @@ -0,0 +1,73 @@
@@ -1370,6 +1411,7 @@ index 0000000000000000000000000000000000000000..f87dcfaee76c4f138505896f84c9dbe4
 +  static AnkiStore& getInstance();
 +
 +  bool load(std::string& error);
++  bool loadConfiguration(std::string& error);
 +  bool saveConfig(std::string& error) const;
 +  bool configured() const;
 +
@@ -1415,7 +1457,6 @@ index 0000000000000000000000000000000000000000..f87dcfaee76c4f138505896f84c9dbe4
 +  uint16_t reviewCount = 0;
 +  std::vector<uint16_t> queue;
 +
-+  bool loadConfig(std::string& error);
 +  bool loadSession(std::string& error);
 +  bool saveSession(std::string& error) const;
 +  bool loadCardByIndex(uint16_t cardIndex, AnkiCard& card, std::string& error) const;
@@ -1725,3 +1766,267 @@ index 0000000000000000000000000000000000000000..87f5a79f822ff6cc21b741e563412d47
 +  static const char* errorString(Error error);
 +  static int lastHttpCode;
 +};
+diff --git a/src/network/CrossPointWebServer.cpp b/src/network/CrossPointWebServer.cpp
+index dc54dd8485b50a787f72f4d2d1e5ad8cecdfe453..39de7c0ab39daac52d6a8884702797ed52dfb5af 100644
+--- a/src/network/CrossPointWebServer.cpp
++++ b/src/network/CrossPointWebServer.cpp
+@@ -17,6 +17,7 @@
+ #include "SettingsList.h"
+ #include "WebDAVHandler.h"
+ #include "WifiCredentialStore.h"
++#include "anki/AnkiStore.h"
+ #include "html/FilesPageHtml.generated.h"
+ #include "html/FontsPageHtml.generated.h"
+ #include "html/HomePageHtml.generated.h"
+@@ -77,6 +78,24 @@ bool isProtectedItemName(const String& name) {
+   }
+   return false;
+ }
++
++bool validAnkiServerUrl(const std::string& value) {
++  constexpr size_t MAX_SERVER_URL_LENGTH = 255;
++  if (value.empty() || value.size() > MAX_SERVER_URL_LENGTH || value.find_first_of(" \t\r\n") != std::string::npos) {
++    return false;
++  }
++
++  size_t schemeLength = 0;
++  if (value.rfind("http://", 0) == 0) {
++    schemeLength = 7;
++  } else if (value.rfind("https://", 0) == 0) {
++    schemeLength = 8;
++  } else {
++    return false;
++  }
++
++  return value.size() > schemeLength && value.find_first_of("?#", schemeLength) == std::string::npos;
++}
+ }  // namespace
+ 
+ // File listing page template - now using generated headers:
+@@ -159,6 +178,10 @@ void CrossPointWebServer::begin() {
+   server->on("/api/settings", HTTP_GET, [this] { handleGetSettings(); });
+   server->on("/api/settings", HTTP_POST, [this] { handlePostSettings(); });
+ 
++  // Anki connection endpoints
++  server->on("/api/anki", HTTP_GET, [this] { handleGetAnkiConfig(); });
++  server->on("/api/anki", HTTP_POST, [this] { handlePostAnkiConfig(); });
++
+   // Font management endpoints
+   server->on("/fonts", HTTP_GET, [this] { handleFontsPage(); });
+   server->on("/api/fonts", HTTP_GET, [this] { handleFontList(); });
+@@ -1271,6 +1294,90 @@ void CrossPointWebServer::handlePostSettings() {
+   server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");
+ }
+ 
++// ---- Anki Connection API ----
++
++void CrossPointWebServer::handleGetAnkiConfig() const {
++  std::string error;
++  if (!ANKI_STORE.loadConfiguration(error)) {
++    server->send(500, "text/plain", error.c_str());
++    return;
++  }
++
++  JsonDocument doc;
++  doc["serverUrl"] = ANKI_STORE.getServerUrl();
++  doc["hasApiToken"] = !ANKI_STORE.getApiToken().empty();
++  doc["configured"] = ANKI_STORE.configured();
++
++  String json;
++  serializeJson(doc, json);
++  server->send(200, "application/json", json);
++  LOG_DBG("WEB", "Served Anki configuration API");
++}
++
++void CrossPointWebServer::handlePostAnkiConfig() {
++  if (!server->hasArg("plain")) {
++    server->send(400, "text/plain", "Missing JSON body");
++    return;
++  }
++
++  JsonDocument doc;
++  const DeserializationError parseError = deserializeJson(doc, server->arg("plain"));
++  if (parseError) {
++    server->send(400, "text/plain", String("Invalid JSON: ") + parseError.c_str());
++    return;
++  }
++  if (!doc.is<JsonObject>()) {
++    server->send(400, "text/plain", "JSON body must be an object");
++    return;
++  }
++
++  std::string error;
++  if (!ANKI_STORE.loadConfiguration(error)) {
++    server->send(500, "text/plain", error.c_str());
++    return;
++  }
++
++  const std::string previousServerUrl = ANKI_STORE.getServerUrl();
++  const std::string previousApiToken = ANKI_STORE.getApiToken();
++  bool changed = false;
++
++  if (doc["serverUrl"].is<const char*>() || doc["serverUrl"].is<std::string>()) {
++    const std::string serverUrl = doc["serverUrl"].as<std::string>();
++    if (!validAnkiServerUrl(serverUrl)) {
++      server->send(400, "text/plain", "Server URL must be a valid http:// or https:// base URL");
++      return;
++    }
++    ANKI_STORE.setServerUrl(serverUrl);
++    changed = ANKI_STORE.getServerUrl() != previousServerUrl;
++  }
++
++  if (doc["apiToken"].is<const char*>() || doc["apiToken"].is<std::string>()) {
++    const std::string apiToken = doc["apiToken"].as<std::string>();
++    if (apiToken.size() < 16 || apiToken.size() > 256 || apiToken.find_first_of(" \t\r\n") != std::string::npos) {
++      ANKI_STORE.setServerUrl(previousServerUrl);
++      server->send(400, "text/plain", "API token must contain 16 to 256 characters");
++      return;
++    }
++    ANKI_STORE.setApiToken(apiToken);
++    changed = changed || ANKI_STORE.getApiToken() != previousApiToken;
++  }
++
++  if (!changed) {
++    server->send(200, "text/plain", "No Anki settings changed");
++    return;
++  }
++
++  if (!ANKI_STORE.saveConfig(error)) {
++    ANKI_STORE.setServerUrl(previousServerUrl);
++    ANKI_STORE.setApiToken(previousApiToken);
++    server->send(500, "text/plain", error.c_str());
++    return;
++  }
++
++  server->send(200, "text/plain", "Anki settings saved");
++  LOG_DBG("WEB", "Saved Anki server URL and token state");
++}
++
+ // ---- OPDS Server API ----
+ 
+ void CrossPointWebServer::handleGetOpdsServers() const {
+diff --git a/src/network/CrossPointWebServer.h b/src/network/CrossPointWebServer.h
+index fc1aaf6e3840b08c8141a64d6798c88393747121..e39de62e6b0b7be37326387494e2982174ed64cc 100644
+--- a/src/network/CrossPointWebServer.h
++++ b/src/network/CrossPointWebServer.h
+@@ -108,6 +108,10 @@ class CrossPointWebServer {
+   void handleGetSettings() const;
+   void handlePostSettings();
+ 
++  // Anki connection handlers
++  void handleGetAnkiConfig() const;
++  void handlePostAnkiConfig();
++
+   // Font management handlers
+   void handleFontsPage() const;
+   void handleFontList() const;
+diff --git a/src/network/html/SettingsPage.html b/src/network/html/SettingsPage.html
+index 8b3bee416aa3b81452c2e59e7dfb2ae7de7e1aac..4107317e593764a716b07ff476b93e5a508eeb8f 100644
+--- a/src/network/html/SettingsPage.html
++++ b/src/network/html/SettingsPage.html
+@@ -300,6 +300,7 @@
+     <button class="save-btn" id="saveBtn" onclick="saveSettings()">Save Settings</button>
+   </div>
+ 
++  <div id="anki-container"></div>
+   <div id="wifi-container"></div>
+   <div id="opds-container"></div>
+ 
+@@ -598,6 +599,89 @@
+ 
+   loadSettings();
+ 
++  // --- Anki Offline Sync ---
++  // The API token is write-only: the server reports whether one is present but
++  // never sends the stored secret back to the browser.
++  let ankiConfig = {serverUrl: '', hasApiToken: false, configured: false};
++
++  function renderAnkiSection() {
++    const container = document.getElementById('anki-container');
++    const tokenPlaceholder = ankiConfig.hasApiToken ? '(unchanged)' : 'Paste token from Anki';
++    const status = ankiConfig.configured
++      ? '<div style="margin-top:8px;color:#27ae60;font-size:0.9em;">Configured</div>'
++      : '<div style="margin-top:8px;color:#e67e22;font-size:0.9em;">Server URL and API token are required</div>';
++
++    container.innerHTML =
++      '<div class="card"><h2>Anki Offline Sync</h2>' +
++        '<div class="setting-row">' +
++          '<span class="setting-name">Mac server URL</span>' +
++          '<span class="setting-control"><input type="text" id="anki-server-url" inputmode="url" ' +
++            'placeholder="http://192.168.1.23:5050" value="' + escapeHtml(ankiConfig.serverUrl || '') + '"></span>' +
++        '</div>' +
++        '<div class="setting-row">' +
++          '<span class="setting-name">API token</span>' +
++          '<span class="setting-control"><input type="password" id="anki-api-token" autocomplete="new-password" ' +
++            'placeholder="' + tokenPlaceholder + '"></span>' +
++        '</div>' +
++        '<p style="color:var(--label-color);font-size:0.9em;">' +
++          'The values are stored on the X4. Leave the token blank to keep the existing token. ' +
++          'For a stable address, reserve the Mac&apos;s IP address in your router.' +
++        '</p>' +
++        status +
++        '<div class="opds-actions">' +
++          '<button class="btn-small btn-save-server" id="anki-save-btn" onclick="saveAnkiConfig()">Save Anki settings</button>' +
++        '</div>' +
++      '</div>';
++  }
++
++  async function loadAnkiConfig() {
++    try {
++      const resp = await fetch('/api/anki');
++      if (!resp.ok) throw new Error(await resp.text());
++      ankiConfig = await resp.json();
++      renderAnkiSection();
++    } catch (e) {
++      console.error('Anki settings load error:', e);
++      document.getElementById('anki-container').innerHTML =
++        '<div class="card"><h2>Anki Offline Sync</h2><p style="color:#e74c3c;">Failed to load Anki settings</p></div>';
++    }
++  }
++
++  async function saveAnkiConfig() {
++    const serverUrl = document.getElementById('anki-server-url').value.trim().replace(/\/+$/, '');
++    const apiToken = document.getElementById('anki-api-token').value.trim();
++    if (!/^https?:\/\/[^\s/?#]+(?::\d+)?(?:\/[^?#\s]*)?$/.test(serverUrl)) {
++      showMessage('Enter a valid http:// or https:// Mac server URL.', true);
++      return;
++    }
++    if (apiToken && (apiToken.length < 16 || /\s/.test(apiToken))) {
++      showMessage('The API token must contain at least 16 characters and no spaces.', true);
++      return;
++    }
++
++    const data = {serverUrl: serverUrl};
++    if (apiToken) data.apiToken = apiToken;
++    const button = document.getElementById('anki-save-btn');
++    button.disabled = true;
++    button.textContent = 'Saving...';
++
++    try {
++      const resp = await fetch('/api/anki', {
++        method: 'POST',
++        headers: {'Content-Type': 'application/json'},
++        body: JSON.stringify(data)
++      });
++      if (!resp.ok) throw new Error(await resp.text());
++      document.getElementById('anki-api-token').value = '';
++      showMessage('Anki settings saved!', false);
++      await loadAnkiConfig();
++    } catch (e) {
++      showMessage('Error: ' + e.message, true);
++      button.disabled = false;
++      button.textContent = 'Save Anki settings';
++    }
++  }
++
+   // --- Wi-Fi Network Management ---
+   // Renders an editable list of saved Wi-Fi networks using /api/wifi endpoints.
+   // Password fields are never pre-filled; when left blank during edit, existing
+@@ -825,6 +909,7 @@
+     }
+   }
+ 
++  loadAnkiConfig();
+   loadWifiNetworks();
+   loadOpdsServers();
+ </script>
