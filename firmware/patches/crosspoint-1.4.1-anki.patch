@@ -11824,10 +11824,10 @@ index a259603..110fe88 100755
    done
  done
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
-index ecd7b0e..0d6ad27 100644
+index ecd7b0e..7db838f 100644
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -8,6 +8,51 @@ STR_SLEEPING: "SLEEPING"
+@@ -8,6 +8,52 @@ STR_SLEEPING: "SLEEPING"
  STR_ENTERING_SLEEP: "Going to sleep"
  STR_BROWSE_FILES: "Browse Files"
  STR_FILE_TRANSFER: "File Transfer"
@@ -11876,14 +11876,15 @@ index ecd7b0e..0d6ad27 100644
 +STR_ANKI_CARD_FONT_READER: "Reader / SD font"
 +STR_ANKI_EMPTY_SIDE: "[no text]"
 +STR_ANKI_DECKS_LOADED: "decks loaded"
++STR_ANKI_NETWORK_HINT: "Start Anki on your computer and make sure both devices are on the same Wi-Fi."
  STR_SETTINGS_TITLE: "Settings"
  STR_CONTINUE_READING: "Continue Reading"
  STR_NO_OPEN_BOOK: "No open book"
 diff --git a/lib/I18n/translations/german.yaml b/lib/I18n/translations/german.yaml
-index a7c1ad0..25460a6 100644
+index a7c1ad0..3b166b8 100644
 --- a/lib/I18n/translations/german.yaml
 +++ b/lib/I18n/translations/german.yaml
-@@ -8,6 +8,51 @@ STR_SLEEPING: "STANDBY"
+@@ -8,6 +8,52 @@ STR_SLEEPING: "STANDBY"
  STR_ENTERING_SLEEP: "Standby"
  STR_BROWSE_FILES: "Durchsuchen"
  STR_FILE_TRANSFER: "Datentransfer"
@@ -11932,9 +11933,19 @@ index a7c1ad0..25460a6 100644
 +STR_ANKI_CARD_FONT_READER: "Reader / SD-Schrift"
 +STR_ANKI_EMPTY_SIDE: "[kein Text]"
 +STR_ANKI_DECKS_LOADED: "Stapel geladen"
++STR_ANKI_NETWORK_HINT: "Starte Anki auf deinem Computer und stelle sicher, dass beide im gleichen WLAN sind."
  STR_SETTINGS_TITLE: "Einstellungen"
  STR_CONTINUE_READING: "Weiterlesen"
  STR_NO_OPEN_BOOK: "Aktuell kein Buch"
+diff --git a/src/SilentRestart.h b/src/SilentRestart.h
+index f94345c..5347acf 100644
+--- a/src/SilentRestart.h
++++ b/src/SilentRestart.h
+@@ -6,3 +6,4 @@
+ 
+ void silentRestart();          // home screen
+ void silentRestartToReader();  // currently-open EPUB (APP_STATE.openEpubPath)
++void silentRestartToAnki();    // Anki menu (after WiFi pull/push heap defrag)
 diff --git a/src/activities/ActivityManager.cpp b/src/activities/ActivityManager.cpp
 index 96e8546..95d91fd 100644
 --- a/src/activities/ActivityManager.cpp
@@ -11988,10 +11999,10 @@ index 9066888..055b1e3 100644
    void goToBoot();
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..b7bf92f
+index 0000000..64140d7
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,840 @@
+@@ -0,0 +1,860 @@
 +#include "AnkiActivity.h"
 +
 +#include <EpdFontData.h>
@@ -12011,6 +12022,7 @@ index 0000000..b7bf92f
 +#include "SilentRestart.h"
 +#include "activities/anki/AnkiSettingsActivity.h"
 +#include "activities/network/WifiSelectionActivity.h"
++#include "activities/reader/ReaderUtils.h"
 +#include "anki/AnkiSyncClient.h"
 +#include "components/UITheme.h"
 +#include "fontIds.h"
@@ -12234,10 +12246,23 @@ index 0000000..b7bf92f
 +  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
 +  Activity::onExit();
 +  if (wifiActivated) {
++    // WiFi fragments heap on ESP32-C3; reboot like KOReader does, but land in
++    // Anki menu so a successful pull/push is not dumped on the home screen.
 +    WiFi.disconnect(false);
 +    delay(30);
-+    silentRestart();
++    silentRestartToAnki();
 +  }
++}
++
++void AnkiActivity::displayCardBuffer() {
++  // FAST most of the time; HALF every N paints (N = CrossPoint refresh setting).
++  ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
++}
++
++void AnkiActivity::displayUiBuffer() {
++  // Menu / status / errors: always half-refresh so transitions stay sharp.
++  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
++  pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
 +}
 +
 +bool AnkiActivity::preventAutoSleep() { return state == State::WORKING; }
@@ -12450,8 +12475,14 @@ index 0000000..b7bf92f
 +    }
 +  } else {
 +    state = State::ERROR;
-+    message = AnkiSyncClient::errorString(result);
-+    if (!detail.empty() && detail.size() < 200) message += "\n" + detail;
++    if (result == AnkiSyncClient::Error::NETWORK_ERROR) {
++      // Connection refused / host unreachable when Anki is closed or off-LAN —
++      // plain guidance, no ESP_ERR_* technical tail.
++      message = tr(STR_ANKI_NETWORK_HINT);
++    } else {
++      message = AnkiSyncClient::errorString(result);
++      if (!detail.empty() && detail.size() < 200) message += "\n" + detail;
++    }
 +  }
 +  // After a successful pull, stay in Anki so the new deck list is visible immediately.
 +  const bool pullOk = result == AnkiSyncClient::Error::OK && networkAction == NetworkAction::PULL;
@@ -12664,7 +12695,7 @@ index 0000000..b7bf92f
 +
 +  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
 +  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-+  renderer.displayBuffer();
++  displayUiBuffer();
 +}
 +
 +size_t AnkiActivity::drawTextPage(const std::string& text, const size_t start, const int x, const int y,
@@ -12809,7 +12840,7 @@ index 0000000..b7bf92f
 +    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 +  }
 +  (void)pageWidth;
-+  renderer.displayBuffer();
++  displayCardBuffer();
 +}
 +
 +void AnkiActivity::renderMessage(const bool error) {
@@ -12830,14 +12861,14 @@ index 0000000..b7bf92f
 +    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_DONE), "", "");
 +    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 +  }
-+  renderer.displayBuffer();
++  displayUiBuffer();
 +}
 diff --git a/src/activities/anki/AnkiActivity.h b/src/activities/anki/AnkiActivity.h
 new file mode 100644
-index 0000000..de5209c
+index 0000000..6b18117
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.h
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,76 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -12886,8 +12917,13 @@ index 0000000..de5209c
 +  size_t pageStart = 0;
 +  size_t nextPageStart = 0;
 +  std::vector<size_t> pageHistory;
++  // E-ink ghost cleanup: same cadence as the reader (SETTINGS refresh frequency).
++  // Counts question/answer/page paints; 0 forces HALF on the first card paint.
++  int pagesUntilFullRefresh = 0;
 +
 +  void rebuildMenu();
++  void displayCardBuffer();
++  void displayUiBuffer();
 +  void handleMenuSelection();
 +  void startNetworkAction(NetworkAction action);
 +  void onWifiSelectionComplete(bool success);
@@ -14127,10 +14163,10 @@ index 0000000..26c10d2
 +#define ANKI_STORE AnkiStore::getInstance()
 diff --git a/src/anki/AnkiSyncClient.cpp b/src/anki/AnkiSyncClient.cpp
 new file mode 100644
-index 0000000..f6741c4
+index 0000000..8fa2c01
 --- /dev/null
 +++ b/src/anki/AnkiSyncClient.cpp
-@@ -0,0 +1,284 @@
+@@ -0,0 +1,285 @@
 +#include "AnkiSyncClient.h"
 +
 +#include <ArduinoJson.h>
@@ -14399,7 +14435,8 @@ index 0000000..f6741c4
 +    case Error::INVALID_URL:
 +      return "Server URL must begin with http:// or https://";
 +    case Error::NETWORK_ERROR:
-+      return "Network connection failed";
++      // User-facing copy lives in i18n (STR_ANKI_NETWORK_HINT); this is fallback only.
++      return "Start Anki on your computer and make sure both devices are on the same Wi-Fi.";
 +    case Error::AUTH_FAILED:
 +      return "API token was rejected";
 +    case Error::SERVER_ERROR:
@@ -14514,6 +14551,54 @@ index f04f7de..49424cf 100644
        default:
          return nullptr;
      }
+diff --git a/src/main.cpp b/src/main.cpp
+index 13ba129..8bb0bdd 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -117,6 +117,7 @@ RTC_NOINIT_ATTR uint32_t silentRebootTarget;
+ constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
+ constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
+ constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
++constexpr uint32_t SILENT_REBOOT_TARGET_ANKI = 2;
+ 
+ // How the device is coming back to life, resolved once at boot. Both resume
+ // flows suppress the splash and leave the panel holding its pre-boot frame; a
+@@ -159,6 +160,16 @@ void silentRestartToReader() {
+   ESP.restart();
+ }
+ 
++void silentRestartToAnki() {
++  if (deepSleepInProgress) return;  // sleeping supersedes the heap-defrag reboot
++  silentRebootTarget = SILENT_REBOOT_TARGET_ANKI;
++  silentRebootMagic = SILENT_REBOOT_MAGIC;
++  LOG_DBG("MAIN", "Silent restart (target=anki)");
++  GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
++  delay(50);
++  ESP.restart();
++}
++
+ // Verify power button press duration on wake-up from deep sleep
+ // Pre-condition: isWakeupByPowerButton() == true
+ void verifyPowerButtonDuration() {
+@@ -322,7 +333,7 @@ void setup() {
+   // Bound the target range too — RTC_NOINIT memory is uninitialized on cold boot.
+   const bool isSilentReboot = (silentRebootMagic == SILENT_REBOOT_MAGIC);
+   const uint32_t snapshotTarget =
+-      (isSilentReboot && silentRebootTarget <= SILENT_REBOOT_TARGET_READER) ? silentRebootTarget : 0;
++      (isSilentReboot && silentRebootTarget <= SILENT_REBOOT_TARGET_ANKI) ? silentRebootTarget : 0;
+   silentRebootMagic = 0;
+   silentRebootTarget = 0;
+ 
+@@ -439,6 +450,9 @@ void setup() {
+   } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_READER &&
+              !APP_STATE.openEpubPath.empty()) {
+     activityManager.goToReader(APP_STATE.openEpubPath);
++  } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_ANKI) {
++    // After Anki WiFi pull/push: defrag heap and open Anki menu (not home).
++    activityManager.goToAnki();
+   } else if (resume == BootResume::Silent) {
+     // target == home (or reader with no open book): land on home — don't fall
+     // through to the sleep-wake "resume reader" logic, which fires on stale
 diff --git a/src/network/CrossPointWebServer.cpp b/src/network/CrossPointWebServer.cpp
 index dc54dd8..ed6900e 100644
 --- a/src/network/CrossPointWebServer.cpp
