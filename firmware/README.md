@@ -68,7 +68,12 @@ Updates müssen Stromversorgung und SD-Karte verbunden bleiben.
 3. Unter **Anki Offline Sync** eintragen:
    - `Mac server URL`, zum Beispiel `http://192.168.1.23:5050`
    - `API token` aus **Werkzeuge → Xteink Status** in Anki
+   - `Max cards per deck` und `Max cards total` (werden beim Pull mitgeschickt)
 4. **Save Anki settings** wählen.
+
+Kartentext nutzt die **Reader-Schrift** von CrossPoint (Noto oder SD-Fonts unter
+**Fonts**). So sind beliebige Sprachen möglich, nicht nur griechische Glyphen
+in der UI-Schrift.
 
 Das Token ist im Webzugang nur beschreibbar: Ein gespeichertes Token wird
 nicht an den Browser zurückgesendet. Ein leeres Tokenfeld behält den bisherigen

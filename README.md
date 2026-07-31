@@ -5,19 +5,19 @@
 | Piece | Role |
 | --- | --- |
 | **Anki add-on** (`xteink_sync`) | Local LAN server: due cards out, reviews in, then normal AnkiWeb sync |
-| **X4 firmware** (CrossPoint 1.4.1 patch) | Offline study UI: multi-deck, grades, Greek/German fonts, SD storage |
+| **X4 firmware** (CrossPoint 1.4.1 patch) | Offline study UI: multi-deck, grades; card text uses reader/SD fonts |
 
 > Community project — not an official Xteink or Anki product. Firmware is a **patch** on [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) 1.4.1, not a full fork.
 
-## Status (v2.2.6)
+## Status (v2.3.0)
 
 Working for daily use on X4 + Anki Desktop (macOS tested):
 
 - Pull **all top-level decks with due cards** (not only the open deck)
-- Up to **250 cards per deck** / **1000 cards total** per pull (configurable)
+- **Max cards per deck / total** configurable on the X4 web UI (defaults 250 / 1000)
 - Deck select/switch on device, progress strip, landscape/portrait, handedness
 - Grades: **Again · Hard · Good · Easy** (physical L→R)
-- Modern + polytonic Greek and German in the card font
+- **Multi-language card text** via CrossPoint reader fonts (Noto built-in + SD fonts) — not Greek-only
 - Push reviews with batch id (safe retries); scheduler runs on the Mac
 
 Known limits of the offline model: learning steps after Again/Hard are re-queued **locally** on the X4; final intervals always come from Anki’s scheduler after push.
@@ -26,7 +26,7 @@ Known limits of the offline model: learning steps after Again/Hard are re-queued
 
 ### 1. Anki Desktop (Mac/Windows/Linux)
 
-1. Download `xteink_sync.ankiaddon` from the [latest Release](https://github.com/jakovm/xteink-anki/releases/latest).
+1. Download `xteink_sync.ankiaddon` from the [latest Release](https://github.com/jakovm/xteink-anki/releases/latest) (add-on **2.3.0+**).
 2. Anki → **Tools → Add-ons → Install from file…**
 3. Restart Anki.
 4. **Tools → Xteink Status** → note **LAN URL** and **API token**.
@@ -42,7 +42,9 @@ Optional config: **Tools → Add-ons → Xteink X4 E-Ink Offline Sync → Config
 4. In a browser: `http://crosspoint.local/settings` → **Anki Offline Sync**
    - Mac server URL, e.g. `http://192.168.1.23:5050`
    - API token from Anki
-5. Home → **Anki** → load today’s cards, study, push reviews when back on Wi‑Fi.
+   - Max cards per deck / total (sent on each pull)
+5. For non-Latin scripts: **Settings → Font** (or install an SD font) — Anki cards use the same reader font as e-books.
+6. Home → **Anki** → load today’s cards, study, push reviews when back on Wi‑Fi.
 
 Reserve a DHCP lease for the computer so the server IP stays stable.
 

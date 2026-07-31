@@ -17,10 +17,10 @@ senden.
 
 - `bind_address`: `0.0.0.0` macht den Dienst im lokalen Netzwerk erreichbar.
 - `port`: TCP-Port des lokalen Dienstes.
-- `max_cards`: maximale Anzahl Karten **pro fälligem Stapel** im täglichen
-  Pull (Standard 250). Es werden alle fälligen Top-Level-Stapel geladen
-  (nicht nur der in Anki gerade ausgewählte). Gesamtlimit über alle Stapel:
-  1000 Karten.
+- `max_cards`: Standard-Maximum **pro fälligem Stapel** (250). Der X4 kann
+  beim Pull mit `?max_cards=` überschreiben (Web-UI / Geräteconfig).
+- `max_total_cards`: Standard-Gesamtlimit über alle Stapel (1000). X4 kann mit
+  `?max_total=` überschreiben. Harte Obergrenze 1000.
 - `max_text_chars`: maximale Textlänge pro Karten-Seite.
 - `max_reviews_per_push`: maximale Anzahl Bewertungen in einem Push.
 - `max_request_bytes`: maximale Größe eines Push-Requests.

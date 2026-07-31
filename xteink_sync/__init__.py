@@ -14,7 +14,7 @@ from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import anki.lang
 from anki.cards import Card
@@ -42,17 +42,20 @@ from .protocol import (
 from . import textutil
 
 
-ADDON_VERSION = "2.2.4"
+ADDON_VERSION = "2.3.0"
 PROTOCOL_VERSION = 2
-MAX_TOTAL_PULL_CARDS = 1000
+# Hard safety caps; config and pull query params are clamped to these.
+MAX_CARDS_PER_DECK_LIMIT = 1000
+MAX_TOTAL_PULL_CARDS_LIMIT = 1000
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
     "bind_address": "0.0.0.0",
     "port": 5050,
     "api_token": "",
-    # Soft cap per deck; total pull is still limited by MAX_TOTAL_PULL_CARDS.
+    # Soft defaults; X4 may override per pull via ?max_cards=&max_total=
     "max_cards": 250,
+    "max_total_cards": 1000,
     "max_text_chars": 4096,
     "max_reviews_per_push": 500,
     "max_request_bytes": 262144,
@@ -165,6 +168,10 @@ def _deck_display_name(full_name: str) -> str:
     if len(name) > 60:
         name = "…" + name[-59:]
     return name
+
+
+def _clamp_int(value: int, minimum: int, maximum: int) -> int:
+    return max(minimum, min(int(value), maximum))
 
 
 def _int_config(config: Dict[str, Any], key: str) -> int:
@@ -450,9 +457,28 @@ class XteinkAPIHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            self._send_pull(self.addon.pull_cards())
+            query = parse_qs(urlsplit(self.path).query)
+            max_cards = self._optional_query_int(query, "max_cards")
+            max_total = self._optional_query_int(query, "max_total")
+            self._send_pull(
+                self.addon.pull_cards(
+                    max_cards_per_deck=max_cards,
+                    max_total_cards=max_total,
+                )
+            )
         except Exception as error:
             self._handle_operation_error(error)
+
+    def _optional_query_int(
+        self, query: Dict[str, List[str]], key: str
+    ) -> Optional[int]:
+        values = query.get(key) or query.get(key.replace("_", "-"))
+        if not values:
+            return None
+        try:
+            return int(values[0])
+        except (TypeError, ValueError):
+            return None
 
     def do_POST(self) -> None:
         if self._path() != "/push":
@@ -597,7 +623,12 @@ class XteinkAddon:
                 f"Anki did not finish the operation within {timeout} seconds"
             )
 
-    def pull_cards(self) -> Dict[str, Any]:
+    def pull_cards(
+        self,
+        max_cards_per_deck: Optional[int] = None,
+        max_total_cards: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        limits = self._resolve_pull_limits(max_cards_per_deck, max_total_cards)
         result = Future()
 
         def start_query() -> None:
@@ -609,7 +640,7 @@ class XteinkAddon:
 
             operation = QueryOp(
                 parent=mw,
-                op=self._collect_due_cards,
+                op=lambda col: self._collect_due_cards(col, limits),
                 success=result.set_result,
             )
             operation.failure(result.set_exception).run_in_background()
@@ -623,12 +654,29 @@ class XteinkAddon:
             "server_time": int(time.time()),
             "decks": decks,
             "cards": cards,
+            "max_cards": limits[0],
+            "max_total_cards": limits[1],
         }
 
+    def _resolve_pull_limits(
+        self,
+        max_cards_per_deck: Optional[int],
+        max_total_cards: Optional[int],
+    ) -> Tuple[int, int]:
+        default_per_deck = _int_config(self.config, "max_cards")
+        default_total = _int_config(self.config, "max_total_cards")
+        per_deck = default_per_deck if max_cards_per_deck is None else max_cards_per_deck
+        total = default_total if max_total_cards is None else max_total_cards
+        per_deck = _clamp_int(per_deck, 1, MAX_CARDS_PER_DECK_LIMIT)
+        total = _clamp_int(total, 1, MAX_TOTAL_PULL_CARDS_LIMIT)
+        # Per-deck cannot usefully exceed the total budget.
+        per_deck = min(per_deck, total)
+        return per_deck, total
+
     def _collect_due_cards(
-        self, collection: Any
+        self, collection: Any, limits: Tuple[int, int]
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        max_cards_per_deck = max(1, min(_int_config(self.config, "max_cards"), 1000))
+        max_cards_per_deck, max_total_cards = limits
         text_limit = max(128, _int_config(self.config, "max_text_chars"))
         original_deck_id = collection.decks.get_current_id()
 
@@ -643,11 +691,11 @@ class XteinkAddon:
             # Fair share so one large stack cannot starve the rest of the pull.
             fair_share = max(
                 1,
-                min(max_cards_per_deck, MAX_TOTAL_PULL_CARDS // deck_count),
+                min(max_cards_per_deck, max_total_cards // deck_count),
             )
 
             for study_deck_id, study_deck_name, child_due in study_decks:
-                remaining_budget = MAX_TOTAL_PULL_CARDS - len(payload)
+                remaining_budget = max_total_cards - len(payload)
                 if remaining_budget <= 0:
                     break
 
@@ -677,7 +725,7 @@ class XteinkAddon:
                 for queued_card in queued_cards:
                     if accepted_for_deck >= max_cards_per_deck:
                         break
-                    if len(payload) >= MAX_TOTAL_PULL_CARDS:
+                    if len(payload) >= max_total_cards:
                         break
 
                     try:

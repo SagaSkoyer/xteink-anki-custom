@@ -11976,10 +11976,10 @@ index 9066888..055b1e3 100644
    void goToBoot();
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..92047e2
+index 0000000..a780523
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,821 @@
+@@ -0,0 +1,828 @@
 +#include "AnkiActivity.h"
 +
 +#include <EpdFontData.h>
@@ -11994,6 +11994,7 @@ index 0000000..92047e2
 +#include <algorithm>
 +#include <cctype>
 +
++#include "CrossPointSettings.h"
 +#include "MappedInputManager.h"
 +#include "SilentRestart.h"
 +#include "activities/anki/AnkiSettingsActivity.h"
@@ -12003,7 +12004,12 @@ index 0000000..92047e2
 +#include "fontIds.h"
 +
 +namespace {
-+constexpr int kCardFontId = UI_12_FONT_ID;
++// Card body uses CrossPoint's reader font (Noto / SD fonts) so any language the
++// user has fonts for works — not a Greek-only UI glyph pack. UI chrome stays UI_*.
++int cardFontId() {
++  const int reader = SETTINGS.getReaderFontId();
++  return reader != 0 ? reader : UI_12_FONT_ID;
++}
 +
 +size_t nextUtf8Boundary(const std::string& text, const size_t position) {
 +  if (position >= text.size()) return text.size();
@@ -12038,7 +12044,7 @@ index 0000000..92047e2
 +EpdFontFamily::Style cardStyle(const bool bold) { return bold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR; }
 +
 +int baseTextWidth(const GfxRenderer& renderer, const char* text, const bool bold) {
-+  return renderer.getTextWidth(kCardFontId, text, cardStyle(bold));
++  return renderer.getTextWidth(cardFontId(), text, cardStyle(bold));
 +}
 +
 +// Anki grade ease: 1=Again, 2=Hard, 3=Good, 4=Easy.
@@ -12135,17 +12141,18 @@ index 0000000..92047e2
 +int drawScaledText(const GfxRenderer& renderer, const int x, const int y, const char* text, const int scale,
 +                   const bool bold) {
 +  if (!text || !*text || scale < 1) return x;
++  const int fontId = cardFontId();
 +
 +  if (scale == 1) {
-+    renderer.drawText(kCardFontId, x, y, text, true, cardStyle(bold));
-+    return x + renderer.getTextWidth(kCardFontId, text, cardStyle(bold));
++    renderer.drawText(fontId, x, y, text, true, cardStyle(bold));
++    return x + renderer.getTextWidth(fontId, text, cardStyle(bold));
 +  }
 +
 +  const auto& fontMap = renderer.getFontMap();
-+  const auto fontIt = fontMap.find(kCardFontId);
++  const auto fontIt = fontMap.find(fontId);
 +  if (fontIt == fontMap.end()) {
-+    renderer.drawText(kCardFontId, x, y, text, true, cardStyle(bold));
-+    return x + renderer.getTextWidth(kCardFontId, text, cardStyle(bold));
++    renderer.drawText(fontId, x, y, text, true, cardStyle(bold));
++    return x + renderer.getTextWidth(fontId, text, cardStyle(bold));
 +  }
 +
 +  const EpdFontFamily& font = fontIt->second;
@@ -12681,7 +12688,7 @@ index 0000000..92047e2
 +    while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.pop_back();
 +    // Ascender offset so the first line is not clipped under the header.
 +    const int baseline =
-+        y + lineNumber * lineHeight + renderer.getFontAscenderSize(kCardFontId) * scale;
++        y + lineNumber * lineHeight + renderer.getFontAscenderSize(cardFontId()) * scale;
 +    drawScaledText(renderer, x, baseline, line.c_str(), scale, bold);
 +    if (nextPosition <= position) nextPosition = nextUtf8Boundary(text, position);
 +    position = nextPosition;
@@ -12752,7 +12759,7 @@ index 0000000..92047e2
 +
 +  const int x = safe.x + padX + 4;
 +  const int contentTop = separatorY + 8;
-+  const int lineHeight = renderer.getLineHeight(kCardFontId) * scale + (scale > 1 ? 4 : 6);
++  const int lineHeight = renderer.getLineHeight(cardFontId()) * scale + (scale > 1 ? 4 : 6);
 +  const int footerHeight = metrics.buttonHintsHeight + renderer.getLineHeight(SMALL_FONT_ID) + 8;
 +  // Landscape: button hints sit on the side; safe area already accounts for that.
 +  const int contentBottom = safe.y + safe.height - (ANKI_STORE.isLandscapeCards() ? 18 : footerHeight);
@@ -13158,10 +13165,10 @@ index 6d170cd..6c05551 100644
    bool storeCoverBuffer();    // Store frame buffer for cover image
 diff --git a/src/anki/AnkiStore.cpp b/src/anki/AnkiStore.cpp
 new file mode 100644
-index 0000000..8c546da
+index 0000000..0f329b0
 --- /dev/null
 +++ b/src/anki/AnkiStore.cpp
-@@ -0,0 +1,716 @@
+@@ -0,0 +1,732 @@
 +#include "AnkiStore.h"
 +
 +#include <ArduinoJson.h>
@@ -13296,6 +13303,8 @@ index 0000000..8c546da
 +  serverUrl.clear();
 +  apiToken.clear();
 +  leftHanded = false;
++  maxCardsPerDeck = 250;
++  maxCardsTotal = 1000;
 +  fontScale = 2;
 +  cardOrientation = 0;
 +  if (!Storage.exists(CONFIG_PATH)) return true;
@@ -13318,6 +13327,8 @@ index 0000000..8c546da
 +  apiToken = obfuscation::deobfuscateFromBase64(doc["api_token_obf"] | "", &tokenOk);
 +  if (!tokenOk) apiToken = doc["api_token"] | std::string("");
 +  leftHanded = doc["left_handed"] | false;
++  setMaxCardsPerDeck(static_cast<uint16_t>(doc["max_cards_per_deck"] | 250));
++  setMaxCardsTotal(static_cast<uint16_t>(doc["max_cards_total"] | 1000));
 +  const int scale = doc["font_scale"] | 2;
 +  fontScale = static_cast<uint8_t>(scale < 1 ? 1 : (scale > 3 ? 3 : scale));
 +  const int orient = doc["card_orientation"] | 0;
@@ -13332,6 +13343,8 @@ index 0000000..8c546da
 +  doc["server_url"] = serverUrl;
 +  doc["api_token_obf"] = obfuscation::obfuscateToBase64(apiToken);
 +  doc["left_handed"] = leftHanded;
++  doc["max_cards_per_deck"] = maxCardsPerDeck;
++  doc["max_cards_total"] = maxCardsTotal;
 +  doc["font_scale"] = fontScale;
 +  doc["card_orientation"] = cardOrientation;
 +
@@ -13355,6 +13368,16 @@ index 0000000..8c546da
 +void AnkiStore::setApiToken(std::string value) { apiToken = trim(std::move(value)); }
 +
 +void AnkiStore::setLeftHanded(const bool value) { leftHanded = value; }
++
++void AnkiStore::setMaxCardsPerDeck(const uint16_t value) {
++  maxCardsPerDeck = value < 1 ? 1 : (value > MAX_CARDS ? MAX_CARDS : value);
++  if (maxCardsPerDeck > maxCardsTotal) maxCardsTotal = maxCardsPerDeck;
++}
++
++void AnkiStore::setMaxCardsTotal(const uint16_t value) {
++  maxCardsTotal = value < 1 ? 1 : (value > MAX_CARDS ? MAX_CARDS : value);
++  if (maxCardsPerDeck > maxCardsTotal) maxCardsPerDeck = maxCardsTotal;
++}
 +
 +void AnkiStore::setFontScale(const uint8_t scale) {
 +  fontScale = scale < 1 ? 1 : (scale > 3 ? 3 : scale);
@@ -13880,10 +13903,10 @@ index 0000000..8c546da
 +}
 diff --git a/src/anki/AnkiStore.h b/src/anki/AnkiStore.h
 new file mode 100644
-index 0000000..ce98079
+index 0000000..5276ceb
 --- /dev/null
 +++ b/src/anki/AnkiStore.h
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,127 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -13924,7 +13947,13 @@ index 0000000..ce98079
 +  bool isLeftHanded() const { return leftHanded; }
 +  void setLeftHanded(bool value);
 +
-+  // 1=small, 2=medium (default), 3=large — integer pixel scale of UI_12
++  // Pull limits sent to the Mac add-on (?max_cards=&max_total=).
++  uint16_t getMaxCardsPerDeck() const { return maxCardsPerDeck; }
++  uint16_t getMaxCardsTotal() const { return maxCardsTotal; }
++  void setMaxCardsPerDeck(uint16_t value);
++  void setMaxCardsTotal(uint16_t value);
++
++  // 1=small, 2=medium (default), 3=large — integer pixel scale for card text
 +  uint8_t getFontScale() const { return fontScale; }
 +  void setFontScale(uint8_t scale);
 +  void cycleFontScale();
@@ -13985,6 +14014,8 @@ index 0000000..ce98079
 +  std::string serverUrl;
 +  std::string apiToken;
 +  bool leftHanded = false;
++  uint16_t maxCardsPerDeck = 250;
++  uint16_t maxCardsTotal = 1000;
 +  uint8_t fontScale = 2;          // medium by default
 +  uint8_t cardOrientation = 0;    // 0 portrait, 1 landscape
 +  std::string batchId;
@@ -14005,10 +14036,10 @@ index 0000000..ce98079
 +#define ANKI_STORE AnkiStore::getInstance()
 diff --git a/src/anki/AnkiSyncClient.cpp b/src/anki/AnkiSyncClient.cpp
 new file mode 100644
-index 0000000..a98654e
+index 0000000..500bffa
 --- /dev/null
 +++ b/src/anki/AnkiSyncClient.cpp
-@@ -0,0 +1,264 @@
+@@ -0,0 +1,269 @@
 +#include "AnkiSyncClient.h"
 +
 +#include <ArduinoJson.h>
@@ -14019,6 +14050,7 @@ index 0000000..a98654e
 +
 +#include <algorithm>
 +#include <array>
++#include <cstdio>
 +
 +#include "AnkiStore.h"
 +
@@ -14080,7 +14112,11 @@ index 0000000..a98654e
 +  if (ANKI_STORE.hasPendingReviews()) return Error::LOCAL_REVIEWS_PENDING;
 +  if (!validBaseUrl(ANKI_STORE.getServerUrl())) return Error::INVALID_URL;
 +
-+  const std::string url = ANKI_STORE.getServerUrl() + "/pull";
++  char pullUrl[384];
++  snprintf(pullUrl, sizeof(pullUrl), "%s/pull?max_cards=%u&max_total=%u", ANKI_STORE.getServerUrl().c_str(),
++           static_cast<unsigned>(ANKI_STORE.getMaxCardsPerDeck()),
++           static_cast<unsigned>(ANKI_STORE.getMaxCardsTotal()));
++  const std::string url(pullUrl);
 +  esp_http_client_handle_t client = createClient(url, HTTP_METHOD_GET);
 +  if (!client || !setCommonHeaders(client, "application/x-ndjson")) {
 +    closeClient(client);
@@ -14373,7 +14409,7 @@ index f04f7de..49424cf 100644
          return nullptr;
      }
 diff --git a/src/network/CrossPointWebServer.cpp b/src/network/CrossPointWebServer.cpp
-index dc54dd8..39de7c0 100644
+index dc54dd8..f255951 100644
 --- a/src/network/CrossPointWebServer.cpp
 +++ b/src/network/CrossPointWebServer.cpp
 @@ -17,6 +17,7 @@
@@ -14420,7 +14456,7 @@ index dc54dd8..39de7c0 100644
    // Font management endpoints
    server->on("/fonts", HTTP_GET, [this] { handleFontsPage(); });
    server->on("/api/fonts", HTTP_GET, [this] { handleFontList(); });
-@@ -1271,6 +1294,90 @@ void CrossPointWebServer::handlePostSettings() {
+@@ -1271,6 +1294,122 @@ void CrossPointWebServer::handlePostSettings() {
    server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");
  }
  
@@ -14437,6 +14473,8 @@ index dc54dd8..39de7c0 100644
 +  doc["serverUrl"] = ANKI_STORE.getServerUrl();
 +  doc["hasApiToken"] = !ANKI_STORE.getApiToken().empty();
 +  doc["configured"] = ANKI_STORE.configured();
++  doc["maxCardsPerDeck"] = ANKI_STORE.getMaxCardsPerDeck();
++  doc["maxCardsTotal"] = ANKI_STORE.getMaxCardsTotal();
 +
 +  String json;
 +  serializeJson(doc, json);
@@ -14469,6 +14507,8 @@ index dc54dd8..39de7c0 100644
 +
 +  const std::string previousServerUrl = ANKI_STORE.getServerUrl();
 +  const std::string previousApiToken = ANKI_STORE.getApiToken();
++  const uint16_t previousMaxPerDeck = ANKI_STORE.getMaxCardsPerDeck();
++  const uint16_t previousMaxTotal = ANKI_STORE.getMaxCardsTotal();
 +  bool changed = false;
 +
 +  if (doc["serverUrl"].is<const char*>() || doc["serverUrl"].is<std::string>()) {
@@ -14492,6 +14532,32 @@ index dc54dd8..39de7c0 100644
 +    changed = changed || ANKI_STORE.getApiToken() != previousApiToken;
 +  }
 +
++  if (doc["maxCardsPerDeck"].is<int>() || doc["maxCardsPerDeck"].is<unsigned int>()) {
++    const int value = doc["maxCardsPerDeck"].as<int>();
++    if (value < 1 || value > 1000) {
++      ANKI_STORE.setServerUrl(previousServerUrl);
++      ANKI_STORE.setApiToken(previousApiToken);
++      server->send(400, "text/plain", "maxCardsPerDeck must be between 1 and 1000");
++      return;
++    }
++    ANKI_STORE.setMaxCardsPerDeck(static_cast<uint16_t>(value));
++    changed = changed || ANKI_STORE.getMaxCardsPerDeck() != previousMaxPerDeck;
++  }
++
++  if (doc["maxCardsTotal"].is<int>() || doc["maxCardsTotal"].is<unsigned int>()) {
++    const int value = doc["maxCardsTotal"].as<int>();
++    if (value < 1 || value > 1000) {
++      ANKI_STORE.setServerUrl(previousServerUrl);
++      ANKI_STORE.setApiToken(previousApiToken);
++      ANKI_STORE.setMaxCardsPerDeck(previousMaxPerDeck);
++      ANKI_STORE.setMaxCardsTotal(previousMaxTotal);
++      server->send(400, "text/plain", "maxCardsTotal must be between 1 and 1000");
++      return;
++    }
++    ANKI_STORE.setMaxCardsTotal(static_cast<uint16_t>(value));
++    changed = changed || ANKI_STORE.getMaxCardsTotal() != previousMaxTotal;
++  }
++
 +  if (!changed) {
 +    server->send(200, "text/plain", "No Anki settings changed");
 +    return;
@@ -14500,12 +14566,14 @@ index dc54dd8..39de7c0 100644
 +  if (!ANKI_STORE.saveConfig(error)) {
 +    ANKI_STORE.setServerUrl(previousServerUrl);
 +    ANKI_STORE.setApiToken(previousApiToken);
++    ANKI_STORE.setMaxCardsPerDeck(previousMaxPerDeck);
++    ANKI_STORE.setMaxCardsTotal(previousMaxTotal);
 +    server->send(500, "text/plain", error.c_str());
 +    return;
 +  }
 +
 +  server->send(200, "text/plain", "Anki settings saved");
-+  LOG_DBG("WEB", "Saved Anki server URL and token state");
++  LOG_DBG("WEB", "Saved Anki settings (URL/token/limits)");
 +}
 +
  // ---- OPDS Server API ----
@@ -14527,7 +14595,7 @@ index fc1aaf6..e39de62 100644
    void handleFontsPage() const;
    void handleFontList() const;
 diff --git a/src/network/html/SettingsPage.html b/src/network/html/SettingsPage.html
-index 8b3bee4..4107317 100644
+index 8b3bee4..af89fef 100644
 --- a/src/network/html/SettingsPage.html
 +++ b/src/network/html/SettingsPage.html
 @@ -300,6 +300,7 @@
@@ -14538,14 +14606,20 @@ index 8b3bee4..4107317 100644
    <div id="wifi-container"></div>
    <div id="opds-container"></div>
  
-@@ -598,6 +599,89 @@
+@@ -598,6 +599,122 @@
  
    loadSettings();
  
 +  // --- Anki Offline Sync ---
 +  // The API token is write-only: the server reports whether one is present but
 +  // never sends the stored secret back to the browser.
-+  let ankiConfig = {serverUrl: '', hasApiToken: false, configured: false};
++  let ankiConfig = {
++    serverUrl: '',
++    hasApiToken: false,
++    configured: false,
++    maxCardsPerDeck: 250,
++    maxCardsTotal: 1000
++  };
 +
 +  function renderAnkiSection() {
 +    const container = document.getElementById('anki-container');
@@ -14553,6 +14627,8 @@ index 8b3bee4..4107317 100644
 +    const status = ankiConfig.configured
 +      ? '<div style="margin-top:8px;color:#27ae60;font-size:0.9em;">Configured</div>'
 +      : '<div style="margin-top:8px;color:#e67e22;font-size:0.9em;">Server URL and API token are required</div>';
++    const maxPerDeck = ankiConfig.maxCardsPerDeck != null ? ankiConfig.maxCardsPerDeck : 250;
++    const maxTotal = ankiConfig.maxCardsTotal != null ? ankiConfig.maxCardsTotal : 1000;
 +
 +    container.innerHTML =
 +      '<div class="card"><h2>Anki Offline Sync</h2>' +
@@ -14566,9 +14642,20 @@ index 8b3bee4..4107317 100644
 +          '<span class="setting-control"><input type="password" id="anki-api-token" autocomplete="new-password" ' +
 +            'placeholder="' + tokenPlaceholder + '"></span>' +
 +        '</div>' +
++        '<div class="setting-row">' +
++          '<span class="setting-name">Max cards per deck</span>' +
++          '<span class="setting-control"><input type="number" id="anki-max-per-deck" min="1" max="1000" step="1" ' +
++            'value="' + maxPerDeck + '"></span>' +
++        '</div>' +
++        '<div class="setting-row">' +
++          '<span class="setting-name">Max cards total</span>' +
++          '<span class="setting-control"><input type="number" id="anki-max-total" min="1" max="1000" step="1" ' +
++            'value="' + maxTotal + '"></span>' +
++        '</div>' +
 +        '<p style="color:var(--label-color);font-size:0.9em;">' +
-+          'The values are stored on the X4. Leave the token blank to keep the existing token. ' +
-+          'For a stable address, reserve the Mac&apos;s IP address in your router.' +
++          'Stored on the X4 and sent on each pull. Leave the token blank to keep the existing token. ' +
++          'Card text uses the same font as the e-book reader (Settings → Font / SD fonts) for any language. ' +
++          'For a stable address, reserve the Mac&apos;s IP in your router.' +
 +        '</p>' +
 +        status +
 +        '<div class="opds-actions">' +
@@ -14593,6 +14680,8 @@ index 8b3bee4..4107317 100644
 +  async function saveAnkiConfig() {
 +    const serverUrl = document.getElementById('anki-server-url').value.trim().replace(/\/+$/, '');
 +    const apiToken = document.getElementById('anki-api-token').value.trim();
++    const maxCardsPerDeck = parseInt(document.getElementById('anki-max-per-deck').value, 10);
++    const maxCardsTotal = parseInt(document.getElementById('anki-max-total').value, 10);
 +    if (!/^https?:\/\/[^\s/?#]+(?::\d+)?(?:\/[^?#\s]*)?$/.test(serverUrl)) {
 +      showMessage('Enter a valid http:// or https:// Mac server URL.', true);
 +      return;
@@ -14601,8 +14690,20 @@ index 8b3bee4..4107317 100644
 +      showMessage('The API token must contain at least 16 characters and no spaces.', true);
 +      return;
 +    }
++    if (!Number.isFinite(maxCardsPerDeck) || maxCardsPerDeck < 1 || maxCardsPerDeck > 1000) {
++      showMessage('Max cards per deck must be between 1 and 1000.', true);
++      return;
++    }
++    if (!Number.isFinite(maxCardsTotal) || maxCardsTotal < 1 || maxCardsTotal > 1000) {
++      showMessage('Max cards total must be between 1 and 1000.', true);
++      return;
++    }
 +
-+    const data = {serverUrl: serverUrl};
++    const data = {
++      serverUrl: serverUrl,
++      maxCardsPerDeck: maxCardsPerDeck,
++      maxCardsTotal: maxCardsTotal
++    };
 +    if (apiToken) data.apiToken = apiToken;
 +    const button = document.getElementById('anki-save-btn');
 +    button.disabled = true;
@@ -14628,7 +14729,7 @@ index 8b3bee4..4107317 100644
    // --- Wi-Fi Network Management ---
    // Renders an editable list of saved Wi-Fi networks using /api/wifi endpoints.
    // Password fields are never pre-filled; when left blank during edit, existing
-@@ -825,6 +909,7 @@
+@@ -825,6 +942,7 @@
      }
    }
  
