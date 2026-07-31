@@ -42,7 +42,7 @@ from .protocol import (
 from . import textutil
 
 
-ADDON_VERSION = "2.3.1"
+ADDON_VERSION = "2.3.2"
 PROTOCOL_VERSION = 2
 # Hard safety caps; config and pull query params are clamped to these.
 MAX_CARDS_PER_DECK_LIMIT = 1000
@@ -986,13 +986,23 @@ class XteinkAddon:
                 if review.answered_at_ms is not None:
                     answer.answered_at_millis = review.answered_at_ms
                 answer.milliseconds_taken = review.duration_ms
-            except Exception:
-                LOGGER.warning(
-                    "Falling back to Anki's legacy answerCard() API",
-                    exc_info=True,
-                )
-            else:
                 return scheduler.answer_card(answer)
+            except Exception as error:
+                # Offline batches are often not in Anki's live queue order.
+                # v3 answer_card then raises "not at top of queue"; legacy
+                # answerCard still applies the grade to that card id.
+                message = str(error).lower()
+                if "not at top of queue" not in message:
+                    LOGGER.warning(
+                        "Falling back to Anki's legacy answerCard() API for card %s",
+                        review.card_id,
+                        exc_info=True,
+                    )
+                else:
+                    LOGGER.info(
+                        "Card %s not at top of queue; using legacy answerCard()",
+                        review.card_id,
+                    )
 
         return scheduler.answerCard(card, review.ease)
 

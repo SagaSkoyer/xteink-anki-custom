@@ -9,7 +9,7 @@
 
 > Community project — not an official Xteink or Anki product. Firmware is a **patch** on [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) 1.4.1, not a full fork.
 
-## Status (v2.3.1)
+## Status (v2.3.2)
 
 Working for daily use on X4 + Anki Desktop (macOS tested):
 

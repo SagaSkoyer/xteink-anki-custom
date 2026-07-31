@@ -11824,10 +11824,10 @@ index a259603..110fe88 100755
    done
  done
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
-index ecd7b0e..34b0901 100644
+index ecd7b0e..0d6ad27 100644
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -8,6 +8,50 @@ STR_SLEEPING: "SLEEPING"
+@@ -8,6 +8,51 @@ STR_SLEEPING: "SLEEPING"
  STR_ENTERING_SLEEP: "Going to sleep"
  STR_BROWSE_FILES: "Browse Files"
  STR_FILE_TRANSFER: "File Transfer"
@@ -11846,6 +11846,7 @@ index ecd7b0e..34b0901 100644
 +STR_ANKI_PUSHING: "Uploading reviews..."
 +STR_ANKI_PULL_OK: "Cards downloaded"
 +STR_ANKI_PUSH_OK: "Reviews uploaded"
++STR_ANKI_PUSH_PARTIAL: "Most reviews uploaded; some skipped"
 +STR_ANKI_OFFLINE_DONE: "All cards reviewed. Upload when Anki is open on the Mac."
 +STR_ANKI_DECK_DONE: "Deck finished. Choose another deck or upload reviews."
 +STR_ANKI_QUESTION: "Question"
@@ -11879,10 +11880,10 @@ index ecd7b0e..34b0901 100644
  STR_CONTINUE_READING: "Continue Reading"
  STR_NO_OPEN_BOOK: "No open book"
 diff --git a/lib/I18n/translations/german.yaml b/lib/I18n/translations/german.yaml
-index a7c1ad0..faf6d08 100644
+index a7c1ad0..25460a6 100644
 --- a/lib/I18n/translations/german.yaml
 +++ b/lib/I18n/translations/german.yaml
-@@ -8,6 +8,50 @@ STR_SLEEPING: "STANDBY"
+@@ -8,6 +8,51 @@ STR_SLEEPING: "STANDBY"
  STR_ENTERING_SLEEP: "Standby"
  STR_BROWSE_FILES: "Durchsuchen"
  STR_FILE_TRANSFER: "Datentransfer"
@@ -11901,6 +11902,7 @@ index a7c1ad0..faf6d08 100644
 +STR_ANKI_PUSHING: "Bewertungen werden übertragen..."
 +STR_ANKI_PULL_OK: "Karten wurden geladen"
 +STR_ANKI_PUSH_OK: "Bewertungen wurden übertragen"
++STR_ANKI_PUSH_PARTIAL: "Meiste Bewertungen ok; einige übersprungen"
 +STR_ANKI_OFFLINE_DONE: "Alle Karten gelernt. Übertragen, wenn Anki auf dem Mac geöffnet ist."
 +STR_ANKI_DECK_DONE: "Stapel fertig. Anderen Stapel wählen oder Bewertungen übertragen."
 +STR_ANKI_QUESTION: "Frage"
@@ -11986,10 +11988,10 @@ index 9066888..055b1e3 100644
    void goToBoot();
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..8478bc3
+index 0000000..b7bf92f
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,831 @@
+@@ -0,0 +1,840 @@
 +#include "AnkiActivity.h"
 +
 +#include <EpdFontData.h>
@@ -12438,13 +12440,22 @@ index 0000000..8478bc3
 +        message = tr(STR_ANKI_PUSH_OK);
 +      }
 +    }
++  } else if (result == AnkiSyncClient::Error::PARTIAL_RESPONSE) {
++    // Most reviews applied; local session already cleared. Soft success, not red error.
++    state = State::MESSAGE;
++    message = tr(STR_ANKI_PUSH_PARTIAL);
++    if (!detail.empty() && detail.size() < 96) {
++      message += "\n";
++      message += detail;
++    }
 +  } else {
 +    state = State::ERROR;
 +    message = AnkiSyncClient::errorString(result);
-+    if (!detail.empty() && detail.size() < 512) message += "\n" + detail;
++    if (!detail.empty() && detail.size() < 200) message += "\n" + detail;
 +  }
 +  // After a successful pull, stay in Anki so the new deck list is visible immediately.
-+  restartOnDismiss = !(result == AnkiSyncClient::Error::OK && networkAction == NetworkAction::PULL);
++  const bool pullOk = result == AnkiSyncClient::Error::OK && networkAction == NetworkAction::PULL;
++  restartOnDismiss = !pullOk;
 +  networkAction = NetworkAction::NONE;
 +  requestUpdate();
 +}
@@ -14116,10 +14127,10 @@ index 0000000..26c10d2
 +#define ANKI_STORE AnkiStore::getInstance()
 diff --git a/src/anki/AnkiSyncClient.cpp b/src/anki/AnkiSyncClient.cpp
 new file mode 100644
-index 0000000..500bffa
+index 0000000..f6741c4
 --- /dev/null
 +++ b/src/anki/AnkiSyncClient.cpp
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,284 @@
 +#include "AnkiSyncClient.h"
 +
 +#include <ArduinoJson.h>
@@ -14348,11 +14359,26 @@ index 0000000..500bffa
 +
 +  const std::string status = doc["status"] | std::string("");
 +  if (status == "partial") {
-+    detail = response;
++    // Batch was accepted; keep a short human summary instead of raw JSON.
++    const int processed = doc["processed"] | 0;
++    int rejectedCount = 0;
++    if (doc["rejected"].is<JsonArray>()) {
++      rejectedCount = static_cast<int>(doc["rejected"].as<JsonArray>().size());
++    }
++    char summary[96];
++    snprintf(summary, sizeof(summary), "%d ok, %d skipped", processed, rejectedCount);
++    detail = summary;
++    // Clear local reviews — the server finished this batch_id (partial still
++    // marks it complete). Retrying would only return "duplicate".
++    std::string clearError;
++    if (!ANKI_STORE.clearSession(clearError)) {
++      detail += std::string("; ") + clearError;
++      return Error::STORAGE_ERROR;
++    }
 +    return Error::PARTIAL_RESPONSE;
 +  }
 +  if (status != "success" && status != "duplicate") {
-+    detail = response;
++    detail = response.size() > 200 ? response.substr(0, 200) + "…" : response;
 +    return Error::PROTOCOL_ERROR;
 +  }
 +
