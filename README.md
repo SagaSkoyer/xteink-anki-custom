@@ -9,7 +9,7 @@
 
 > Community project — not an official Xteink or Anki product. Firmware is a **patch** on [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) 1.4.1, not a full fork.
 
-## Status (v2.3.2)
+## Status (v2.4.0)
 
 Working for daily use on X4 + Anki Desktop (macOS tested):
 
@@ -19,6 +19,8 @@ Working for daily use on X4 + Anki Desktop (macOS tested):
 - Grades: **Again · Hard · Good · Easy** (physical L→R)
 - **Card font:** default UI font (German + modern/polytonic Greek); optional reader/SD font for other languages (**Fonts** page)
 - Push reviews with batch id (safe retries); scheduler runs on the Mac
+- **XFD converter** on pull: HTML/Markdown tables, lists, headings → e-ink plain text
+- **Bold on e-ink (Phase B):** `**…**` / `<b>` → mixed bold/regular runs on the X4
 
 Known limits of the offline model: learning steps after Again/Hard are re-queued **locally** on the X4; final intervals always come from Anki’s scheduler after push.
 
@@ -26,7 +28,7 @@ Known limits of the offline model: learning steps after Again/Hard are re-queued
 
 ### 1. Anki Desktop (Mac/Windows/Linux)
 
-1. Download `xteink_sync.ankiaddon` from the [latest Release](https://github.com/jakovm/xteink-anki/releases/latest) (add-on **2.3.1+** recommended).
+1. Download `xteink_sync.ankiaddon` from the [latest Release](https://github.com/jakovm/xteink-anki/releases/latest) (add-on **2.4.0+** recommended).
 2. Anki → **Tools → Add-ons → Install from file…**
 3. Restart Anki.
 4. **Tools → Xteink Status** → note **LAN URL** and **API token**.
@@ -61,6 +63,182 @@ AnkiWeb ←→ Anki Desktop (scheduler) ←LAN→ Xteink X4 (offline reviews)
 
 The add-on does **not** write Anki’s SQLite directly. Collection access goes through Anki’s serialized ops; after a successful push it can trigger the normal AnkiWeb sync.
 
+## E-ink flashcard dialect (XFD)
+
+Anki cards are HTML on the desktop. The X4 has **no browser** and only draws **plain text lines** (plus optional bold for UI chrome). Full CommonMark or GFM would be wasted complexity and bad for short review sessions.
+
+**XFD** (*Xteink Flashcard Dialect*) is a **small Markdown-inspired subset** aimed at grammar overviews and other structured cards—especially **tables**—that still fit a monochrome e-ink screen.
+
+The **Mac-side converter** lives in `xteink_sync/textutil.py` (`to_device_text` / `plain_text`) and runs on every `/pull`. Write cards in this subset (or Anki HTML that maps to it); the device still only receives plain `front` / `back` strings—no Markdown parser on the X4.
+
+### Goals
+
+| Goal | Implication |
+| --- | --- |
+| Readable paradigms | Small tables, short cells |
+| Fast reviews | One idea per card; 1–2 screen pages max |
+| Stable on ESP32 | No nested HTML, no images, no CSS |
+| Grammar-first | Tables, lists, bold lemmas/endings beat prose |
+
+### Supported syntax (authoring)
+
+**Tier 1 — use freely**
+
+| Construct | Markdown | On device (target) |
+| --- | --- | --- |
+| Paragraphs / line breaks | blank line, hard break | blank line / new line |
+| **Bold** | `**lemma**` or `__lemma__` / `<b>` | STX/ETX markers in pull payload; X4 draws bold runs (also accepts raw `**…**`) |
+| Unordered list | `- item` / `* item` | `• item` |
+| Ordered list | `1. item` | `1. item` |
+| Table | GFM pipe table, **2–4 columns** | fixed-width columns, header + rule |
+
+**Tier 2 — optional**
+
+| Construct | Markdown | On device (target) |
+| --- | --- | --- |
+| One title | `#` or `##` once at top | first line, slightly stronger |
+| Inline code | `` `-ω, -εις` `` | monospaced if available, else `` `…` `` kept or plain |
+| Block quote | `> tip` | `│ tip` or indented line |
+| Separator | `---` | thin rule or blank + `────` |
+
+**Not in XFD** (ignored or stripped): images, links as navigation, nested lists beyond one level, task lists, footnotes, HTML/CSS blocks, wide tables (>4 columns), long fenced code, YAML front matter.
+
+### Tables (grammar)
+
+Tables are the main reason XFD exists. Prefer **atomic paradigms**, not chapter dumps.
+
+| Guideline | Recommendation |
+| --- | --- |
+| Columns | **2–4** (e.g. person × number, case × gender) |
+| Cell length | ~1–2 words / ≤ ~12–20 characters |
+| Header | first row = labels; first column may be row labels |
+| Size that works | **2×3** ideal; **3×3** OK with short forms; **4×4** only with tiny cells |
+| Card split | Sg on one card, Pl on another if it no longer fits one screen |
+| Cloze-in-table | use `?` or Anki cloze in **one** cell; rest filled |
+
+**Authoring example (Markdown → intended device layout):**
+
+```markdown
+## λύω — Present Active
+
+|    | Sg     | Pl        |
+| -- | ------ | --------- |
+| 1  | λύω    | λύομεν    |
+| 2  | λύεις  | λύετε     |
+| 3  | λύει   | λύουσι(ν) |
+```
+
+Target plain layout after conversion:
+
+```text
+λύω — Present Active
+
+        Sg          Pl
+1.      λύω         λύομεν
+2.      λύεις       λύετε
+3.      λύει        λύουσι(ν)
+```
+
+**Card patterns that work well**
+
+| Pattern | Front | Back |
+| --- | --- | --- |
+| Full paradigm | lemma + tense/voice label | small table |
+| One form | “2 pl. pres. act. of λύω” | λύετε |
+| Rule list | “Aorist passive marker?” | short `-` list |
+| Contrast | “Imperfect vs aorist (aspect)” | 2-column mini table |
+| Gap table | grid with one `?` | full cell + one-line hint |
+
+### Converter (design)
+
+The converter is the **Mac-side** step on pull (Anki add-on), not a second app on the X4. Firmware stays a dumb line renderer until optional bold spans exist.
+
+```text
+Anki note / template
+        │
+        ▼
+  render HTML (or raw field text)
+        │
+        ▼
+  XFD converter  ──  xteink_sync (textutil + helpers)
+        │
+        ├─ strip scripts/styles/media noise
+        ├─ map HTML structure → XFD constructs
+        ├─ parse pipe tables / list-ish HTML
+        ├─ layout tables to fixed columns
+        ├─ bold/code → markers or plain
+        └─ clamp length (max_text_chars)
+        │
+        ▼
+  front / back strings in /pull JSON|NDJSON
+        │
+        ▼
+  X4 draws wrapped lines
+```
+
+**Inputs the converter should accept**
+
+1. **Normal Anki HTML** from `render_output` / templates (`<table>`, `<ul>`, `<b>`, `<p>`, …).  
+2. **XFD-ish Markdown in fields** if the note stores Markdown (or a Markdown add-on left raw source)—detect pipe tables and `**bold**` when tags are absent.  
+3. **Already plain text** with manual spacing—pass through with light cleanup.
+
+**HTML → XFD mapping (core)**
+
+| HTML | XFD / device text |
+| --- | --- |
+| `<p>`, `<div>`, `<br>` | paragraph / newline |
+| `<b>`, `<strong>`, `<h1>`–`<h2>` | bold / title line |
+| `<ul><li>` | `• …` |
+| `<ol><li>` | `1. …` |
+| `<table>` | column-aligned block + header rule |
+| `<blockquote>` | `│ …` |
+| `<code>`, `<tt>` | inline code treatment |
+| `<img>` | `[alt]` or `[Bild]` (unchanged policy) |
+| `<a href>` | link text only |
+| nested junk | flatten one level; drop deeper chrome |
+
+**Table layout algorithm (planned)**
+
+1. Read header + body rows; drop empty trailing columns.  
+2. If **>4 columns**, either split logically (if row labels suggest it) or fall back to **stacked lines** `Col: value` so nothing is silently cropped.  
+3. Measure display width budget (portrait/landscape safe area, card font metrics later; v1: character budget, e.g. ~32–42 cols portrait).  
+4. Pad cells; insert header underline (`────` / spaces).  
+5. Prefer **row labels in column 0**; align numeric/short form columns to the left for mixed scripts (Greek + Latin).  
+6. If the block still exceeds vertical budget, keep the table intact and let the existing **card pager** scroll—do not reflow mid-row.
+
+**Bold and emphasis (Phase B — implemented)**
+
+- Converter turns `**…**`, `__…__`, `<b>`, `<strong>` into zero-width markers **STX** (`U+0002`) / **ETX** (`U+0003`) inside `front`/`back`.  
+- X4 `drawTextPage` measures and paints **mixed regular/bold runs** (word-wrap aware).  
+- Fallback on device: unpaired visible `**` toggles bold (for raw Markdown that skipped conversion).  
+- Older firmware may show nothing or odd glyphs for STX/ETX — flash a bin that includes Phase B. Add-on-only update still keeps tables/lists readable.
+
+**Where it lives in the repo**
+
+| Piece | Role |
+| --- | --- |
+| `xteink_sync/textutil.py` | pure conversion (unit-tested, no `aqt`) |
+| `xteink_sync/__init__.py` | call converter after Anki render on `/pull` |
+| `tests/test_textutil.py` | dialect fixtures: tables, lists, Greek, overflow |
+| Firmware | optional later: bold spans only; **no** full Markdown parser on device |
+
+**Non-goals of the converter**
+
+- Pixel-perfect CSS or Anki card themes  
+- Shipping images or audio to the X4  
+- Round-trip editing of Markdown on the device  
+- Guaranteeing huge “cheat sheet” notes—authors should split cards  
+
+**Status:** dialect + converter **implemented** in `textutil` (tables, lists, headings, quotes, bold markers). Phase B bold drawing **implemented** in the X4 firmware patch (`AnkiActivity::drawTextPage`).
+
+### Author checklist
+
+- [ ] One paradigm or rule per card  
+- [ ] Table ≤ 4 columns, short cells  
+- [ ] Fits roughly 1–2 e-ink pages  
+- [ ] Front asks something; back is the table/list—not a textbook  
+- [ ] No essential info only in images  
+
 ## HTTP API (summary)
 
 Base URL: `http://<PC-IP>:5050`
@@ -78,12 +256,14 @@ Ease values: `1=Again`, `2=Hard`, `3=Good`, `4=Easy`. Details and examples: see 
 ## Repository layout
 
 ```text
-xteink_sync/     Anki add-on source
+xteink_sync/     Anki add-on source (pull/push; textutil = XFD converter)
 firmware/        Patch + build scripts against CrossPoint 1.4.1
 dist/            Prebuilt .ankiaddon + .bin + SHA256SUMS
-tests/           Protocol / textutil unit tests
+tests/           Protocol / textutil (XFD) unit tests
 scripts/         Layout helpers
 ```
+
+Card content contract for grammar-style notes: **[E-ink flashcard dialect (XFD)](#e-ink-flashcard-dialect-xfd)**.
 
 ## Development
 
@@ -122,7 +302,7 @@ LAN-only, token-protected. See [`SECURITY.md`](SECURITY.md).
 
 ### Anki am Rechner
 
-1. `xteink_sync.ankiaddon` aus dem [Release](https://github.com/jakovm/xteink-anki/releases/latest) installieren (**2.3.1+** empfohlen).
+1. `xteink_sync.ankiaddon` aus dem [Release](https://github.com/jakovm/xteink-anki/releases/latest) installieren (**2.4.0+** empfohlen).
 2. Anki neu starten → **Werkzeuge → Xteink Status** → LAN-Adresse und API-Token notieren.
 3. Optional unter **Werkzeuge → Erweiterungen → Config**: `max_cards`, `max_total_cards`, Port, …
 
@@ -140,6 +320,70 @@ LAN-only, token-protected. See [`SECURITY.md`](SECURITY.md).
 Am Gerät unter **Anki → Anki-Einstellungen** ebenfalls: Server, Token, Max-Karten, **Kartenschrift** (UI DE/Griechisch oder Reader/SD).
 
 Details zum Bauen/Flashen: [`firmware/README.md`](firmware/README.md) (Deutsch).
+
+### Flashcard-Dialekt (XFD) — Deutsch
+
+**XFD** (*Xteink Flashcard Dialect*) ist ein kleines, Markdown-ähnliches Subset für **strukturierte Karten** auf dem X4 — vor allem **Grammatik-Tabellen**. Kein volles CommonMark: das Gerät zeichnet Zeilen, keinen HTML-Browser.
+
+**Heute:** Converter beim `/pull` (`to_device_text`): Tabellen, Listen, Überschriften, Zitate, Trenner; **Fett** als STX/ETX-Marker. Die X4-Firmware zeichnet gemischte Bold/Regular-Läufe (plus Fallback `**…**`). Inline-Code-Backticks entfallen (Inhalt bleibt).
+
+#### Was du schreiben solltest
+
+| Stufe | Konstrukt | Schreibweise | Ziel auf dem Gerät |
+| --- | --- | --- | --- |
+| 1 | Absätze | Leerzeile | Zeilenumbruch |
+| 1 | **Fett** | `**Lemma**` / `<b>` | Bold auf dem X4 (STX/ETX bzw. `**`) |
+| 1 | Listen | `- …` / `1. …` | `• …` / `1. …` |
+| 1 | Tabelle | Pipe-Tabelle, **2–4 Spalten** | fest ausgerichtete Spalten + Kopfzeile |
+| 2 | eine Überschrift | `#` / `##` oben | erste Zeile hervorgehoben |
+| 2 | Inline-Code | `` `-ω, -εις` `` | Muster/Endungen |
+| 2 | Merksatz | `> …` | `│ …` |
+| 2 | Trenner | `---` | `────` oder Leerzeile |
+
+**Nicht XFD:** Bilder als Inhalt, Links zum Navigieren, verschachtelte Listen, Task-Listen, Footnotes, CSS/HTML-Ballast, Tabellen mit mehr als 4 Spalten, lange Code-Blöcke.
+
+#### Tabellen für Grammatik
+
+- **2×3** (Person × Numerus) ideal; **3×3** ok bei kurzen Formen; ab **4×4** splitten  
+- Zellen kurz (1–2 Wörter); eine Karte = ein Paradigma oder eine Regel  
+- Bei Platznot: Singular und Plural auf **zwei Karten**  
+- Lücke: eine Zelle `?` oder Cloze, Rest ausgefüllt  
+
+Beispiel Ziel-Layout:
+
+```text
+λύω — Präsens Aktiv
+
+        Sg          Pl
+1.      λύω         λύομεν
+2.      λύεις       λύετε
+3.      λύει        λύουσι(ν)
+```
+
+Gute Muster: volles Paradigma · eine Form abfragen · Regelliste · Kontrast-Zweispaltig · Raster mit einer Lücke.
+
+#### Converter (Konzeption)
+
+Läuft **auf dem Mac im Add-on** beim `/pull`, nicht auf dem X4.
+
+```text
+Anki (HTML oder Feldtext)
+    → XFD-Converter (textutil)
+    → front/back im Pull
+    → X4 zeichnet Zeilen
+```
+
+**Aufgaben des Converters**
+
+1. Scripts/Styles/Media-Rauschen entfernen (wie bisher Bilder → `[alt]` / `[Bild]`)  
+2. HTML-Struktur mappen: `<table>`, `<ul>`/`<ol>`, `<b>`/`<strong>`, `<p>`/`<br>`, `<blockquote>`, `<code>`  
+3. Rohes Markdown in Feldern erkennen, wenn keine Tags da sind (Pipe-Tabellen, `**fett**`)  
+4. Tabellen layouten: max. 4 Spalten, Zeichenbudget, Kopf + Linie; bei zu vielen Spalten stapeln (`Spalte: Wert`) statt still abschneiden  
+5. Länge begrenzen (`max_text_chars`); pager auf dem Gerät übernimmt den Rest  
+
+**Bold (Phase B):** Converter setzt Marker; Firmware rendert Runs. **Kein** voller Markdown-Parser auf dem ESP32.
+
+**Tests:** Fixtures in `tests/test_textutil.py` (Tabellen, Listen, Griechisch, Überbreite). Details und englische Spezifikation: Abschnitt **E-ink flashcard dialect (XFD)** oben.
 
 ---
 

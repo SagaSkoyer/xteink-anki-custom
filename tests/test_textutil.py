@@ -60,5 +60,153 @@ class TextUtilTests(unittest.TestCase):
         self.assertIn("Wahrheit", text)
 
 
+class XfdConverterTests(unittest.TestCase):
+    def test_md_heading_list_bold_quote_hr(self):
+        src = "\n".join(
+            [
+                "## Aorist Passiv",
+                "",
+                "- Kennzeichen **-θη-**",
+                "1. Stamm wählen",
+                "",
+                "> Nach Dental oft Assimilation",
+                "",
+                "---",
+                "",
+                "Merke: `+ θη + Endung`",
+            ]
+        )
+        text = TEXTUTIL.to_device_text(src)
+        visible = TEXTUTIL.strip_style_markers(text)
+        self.assertIn("Aorist Passiv", visible)
+        self.assertNotIn("##", text)
+        self.assertIn("• Kennzeichen ", text)
+        self.assertIn(f"{TEXTUTIL.BOLD_ON}-θη-{TEXTUTIL.BOLD_OFF}", text)
+        self.assertIn("1. Stamm wählen", text)
+        self.assertIn("│ Nach Dental oft Assimilation", text)
+        self.assertIn("────", text)
+        self.assertIn("+ θη + Endung", text)
+        self.assertNotIn("**", text)
+        self.assertNotIn("`", text)
+
+    def test_bold_markers_from_markdown_and_html(self):
+        md = TEXTUTIL.to_device_text("Lemma **λύω** hier")
+        self.assertEqual(md, f"Lemma {TEXTUTIL.BOLD_ON}λύω{TEXTUTIL.BOLD_OFF} hier")
+
+        html = TEXTUTIL.to_device_text("Lemma <b>λύω</b> hier")
+        self.assertEqual(html, f"Lemma {TEXTUTIL.BOLD_ON}λύω{TEXTUTIL.BOLD_OFF} hier")
+
+        strong = TEXTUTIL.to_device_text("<strong>Endung</strong>")
+        self.assertEqual(strong, f"{TEXTUTIL.BOLD_ON}Endung{TEXTUTIL.BOLD_OFF}")
+
+    def test_bold_in_table_cell(self):
+        src = "\n".join(
+            [
+                "| Form |",
+                "| ---- |",
+                "| **λύω** |",
+            ]
+        )
+        text = TEXTUTIL.to_device_text(src)
+        self.assertIn(f"{TEXTUTIL.BOLD_ON}λύω{TEXTUTIL.BOLD_OFF}", text)
+        self.assertEqual(TEXTUTIL.strip_style_markers(text).count("λύω"), 1)
+
+    def test_md_pipe_table_paradigm(self):
+        src = "\n".join(
+            [
+                "## λύω — Present Active",
+                "",
+                "|    | Sg     | Pl        |",
+                "| -- | ------ | --------- |",
+                "| 1  | λύω    | λύομεν    |",
+                "| 2  | λύεις  | λύετε     |",
+                "| 3  | λύει   | λύουσι(ν) |",
+            ]
+        )
+        text = TEXTUTIL.to_device_text(src)
+        self.assertIn("λύω — Present Active", text)
+        self.assertIn("Sg", text)
+        self.assertIn("Pl", text)
+        self.assertIn("λύομεν", text)
+        self.assertIn("λύουσι(ν)", text)
+        # Header rule present; no raw pipes.
+        self.assertNotIn("|", text)
+        self.assertRegex(text, r"-{3,}")
+
+    def test_html_table(self):
+        html = """
+        <h2>εἰμί</h2>
+        <table>
+          <tr><th></th><th>Sg</th><th>Pl</th></tr>
+          <tr><td>1</td><td>εἰμί</td><td>ἐσμέν</td></tr>
+          <tr><td>2</td><td>εἶ</td><td>ἐστέ</td></tr>
+        </table>
+        """
+        text = TEXTUTIL.to_device_text(html)
+        self.assertIn("εἰμί", text)
+        self.assertIn("ἐσμέν", text)
+        self.assertIn("Sg", text)
+        self.assertNotIn("<table", text.lower())
+
+    def test_html_lists(self):
+        html = "<ul><li>Alpha</li><li><b>Beta</b></li></ul><ol><li>Eins</li><li>Zwei</li></ol>"
+        text = TEXTUTIL.to_device_text(html)
+        self.assertIn("• Alpha", text)
+        self.assertIn(f"• {TEXTUTIL.BOLD_ON}Beta{TEXTUTIL.BOLD_OFF}", text)
+        self.assertIn("1. Eins", text)
+        self.assertIn("2. Zwei", text)
+
+    def test_html_blockquote(self):
+        text = TEXTUTIL.to_device_text("<blockquote>Merksatz hier</blockquote>")
+        self.assertEqual(text, "│ Merksatz hier")
+
+    def test_wide_table_stacks(self):
+        rows = [
+            ["P", "A", "B", "C", "D", "E"],
+            ["1", "a1", "b1", "c1", "d1", "e1"],
+        ]
+        laid = TEXTUTIL.format_table(rows)
+        self.assertIn("A:", laid)
+        self.assertIn("a1", laid)
+        self.assertNotIn("|", laid)
+
+    def test_format_table_two_by_three(self):
+        rows = [
+            ["", "Sg", "Pl"],
+            ["1", "λύω", "λύομεν"],
+            ["2", "λύεις", "λύετε"],
+        ]
+        laid = TEXTUTIL.format_table(rows, width_budget=42)
+        lines = laid.splitlines()
+        self.assertGreaterEqual(len(lines), 3)
+        self.assertIn("Sg", lines[0])
+        self.assertTrue(set(lines[1]) <= {"-"})
+        self.assertIn("λύω", laid)
+        self.assertIn("λύομεν", laid)
+
+    def test_plain_text_alias_uses_xfd(self):
+        text = TEXTUTIL.plain_text("- Regel **A**")
+        self.assertEqual(text, f"• Regel {TEXTUTIL.BOLD_ON}A{TEXTUTIL.BOLD_OFF}")
+
+    def test_field_map_converts_markdown(self):
+        fields = TEXTUTIL.field_map_from_pairs(
+            [("Front", "## Titel\n\n| a | b |\n| - | - |\n| 1 | 2 |")]
+        )
+        self.assertIn("Front", fields)
+        self.assertIn("Titel", fields["Front"])
+        self.assertIn("1", fields["Front"])
+        self.assertNotIn("|", fields["Front"])
+
+    def test_limit_still_applies(self):
+        text = TEXTUTIL.to_device_text("x" * 100, limit=20)
+        self.assertTrue(text.endswith("…"))
+        self.assertLessEqual(len(text), 20)
+
+    def test_link_text_only(self):
+        text = TEXTUTIL.to_device_text('<a href="https://example.com">Lemma</a>')
+        self.assertEqual(text, "Lemma")
+        self.assertNotIn("http", text)
+
+
 if __name__ == "__main__":
     unittest.main()

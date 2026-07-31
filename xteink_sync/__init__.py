@@ -42,7 +42,7 @@ from .protocol import (
 from . import textutil
 
 
-ADDON_VERSION = "2.3.2"
+ADDON_VERSION = "2.4.0"
 PROTOCOL_VERSION = 2
 # Hard safety caps; config and pull query params are clamped to these.
 MAX_CARDS_PER_DECK_LIMIT = 1000
@@ -247,11 +247,14 @@ def _card_side_texts(card: Card, text_limit: int) -> Tuple[str, str]:
     """Build front/back text that stays readable on the X4 even with odd templates."""
 
     question_html, answer_html = _render_card_html(card)
-    rendered_front = textutil.plain_text(question_html, text_limit)
-    rendered_back = textutil.plain_text(textutil.answer_only(answer_html), text_limit)
+    # XFD converter: HTML/Markdown subset → e-ink plain text (tables, lists, …).
+    rendered_front = textutil.to_device_text(question_html, limit=text_limit)
+    rendered_back = textutil.to_device_text(
+        textutil.answer_only(answer_html), limit=text_limit
+    )
     if not rendered_back:
         # Some templates put the whole card in answer(); strip the front part if present.
-        full_answer = textutil.plain_text(answer_html, text_limit)
+        full_answer = textutil.to_device_text(answer_html, limit=text_limit)
         if rendered_front and full_answer.startswith(rendered_front):
             rendered_back = full_answer[len(rendered_front) :].lstrip("\n ").strip()
         else:

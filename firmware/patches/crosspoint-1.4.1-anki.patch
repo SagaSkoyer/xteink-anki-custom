@@ -11999,10 +11999,10 @@ index 9066888..055b1e3 100644
    void goToBoot();
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..64140d7
+index 0000000..bbd6efd
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,860 @@
+@@ -0,0 +1,988 @@
 +#include "AnkiActivity.h"
 +
 +#include <EpdFontData.h>
@@ -12070,8 +12070,109 @@ index 0000000..64140d7
 +
 +EpdFontFamily::Style cardStyle(const bool bold) { return bold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR; }
 +
++// XFD Phase B: STX/ETX mark bold on/off (from Anki converter). Visible ** toggles
++// bold as a fallback when markers were not applied (raw Markdown on the wire).
++constexpr char kBoldOn = '\x02';
++constexpr char kBoldOff = '\x03';
++
 +int baseTextWidth(const GfxRenderer& renderer, const char* text, const bool bold) {
 +  return renderer.getTextWidth(cardFontId(), text, cardStyle(bold));
++}
++
++// Defined later (scaled glyph path); needed by drawStyledRange.
++int drawScaledText(const GfxRenderer& renderer, const int x, const int y, const char* text, const int scale,
++                   const bool bold);
++
++bool isStyleMarkerAt(const std::string& text, const size_t position) {
++  if (position >= text.size()) return false;
++  const unsigned char c = static_cast<unsigned char>(text[position]);
++  if (c == static_cast<unsigned char>(kBoldOn) || c == static_cast<unsigned char>(kBoldOff)) return true;
++  return c == '*' && position + 1 < text.size() && text[position + 1] == '*';
++}
++
++// Advance past one style marker and update bold; returns new index (unchanged if none).
++size_t consumeStyleMarker(const std::string& text, size_t position, bool& bold) {
++  if (position >= text.size()) return position;
++  const unsigned char c = static_cast<unsigned char>(text[position]);
++  if (c == static_cast<unsigned char>(kBoldOn)) {
++    bold = true;
++    return position + 1;
++  }
++  if (c == static_cast<unsigned char>(kBoldOff)) {
++    bold = false;
++    return position + 1;
++  }
++  if (c == '*' && position + 1 < text.size() && text[position + 1] == '*') {
++    bold = !bold;
++    return position + 2;
++  }
++  return position;
++}
++
++bool boldStateAt(const std::string& text, const size_t position) {
++  bool bold = false;
++  size_t i = 0;
++  while (i < position && i < text.size()) {
++    if (isStyleMarkerAt(text, i)) {
++      i = consumeStyleMarker(text, i, bold);
++      continue;
++    }
++    i = nextUtf8Boundary(text, i);
++  }
++  return bold;
++}
++
++int styledRangeWidth(const GfxRenderer& renderer, const std::string& text, const size_t start, const size_t end,
++                     bool bold) {
++  if (start >= end || start >= text.size()) return 0;
++  const size_t limit = std::min(end, text.size());
++  int width = 0;
++  std::string run;
++  run.reserve(64);
++  auto flush = [&]() {
++    if (run.empty()) return;
++    width += baseTextWidth(renderer, run.c_str(), bold);
++    run.clear();
++  };
++  size_t i = start;
++  while (i < limit) {
++    if (isStyleMarkerAt(text, i)) {
++      flush();
++      i = consumeStyleMarker(text, i, bold);
++      continue;
++    }
++    const size_t next = std::min(nextUtf8Boundary(text, i), limit);
++    run.append(text, i, next - i);
++    i = next;
++  }
++  flush();
++  return width;
++}
++
++int drawStyledRange(const GfxRenderer& renderer, int penX, const int y, const std::string& text, const size_t start,
++                    const size_t end, const int scale, bool bold) {
++  if (start >= end || start >= text.size()) return penX;
++  const size_t limit = std::min(end, text.size());
++  std::string run;
++  run.reserve(64);
++  auto flush = [&]() {
++    if (run.empty()) return;
++    penX = drawScaledText(renderer, penX, y, run.c_str(), scale, bold);
++    run.clear();
++  };
++  size_t i = start;
++  while (i < limit) {
++    if (isStyleMarkerAt(text, i)) {
++      flush();
++      i = consumeStyleMarker(text, i, bold);
++      continue;
++    }
++    const size_t next = std::min(nextUtf8Boundary(text, i), limit);
++    run.append(text, i, next - i);
++    i = next;
++  }
++  flush();
++  return penX;
 +}
 +
 +// Anki grade ease: 1=Again, 2=Hard, 3=Good, 4=Easy.
@@ -12700,7 +12801,8 @@ index 0000000..64140d7
 +
 +size_t AnkiActivity::drawTextPage(const std::string& text, const size_t start, const int x, const int y,
 +                                  const int width, const int maxLines, const int lineHeight, const int scale,
-+                                  const bool bold) {
++                                  const bool /*boldDefault*/) {
++  // boldDefault is unused: style comes from STX/ETX markers and optional ** toggles.
 +  size_t position = std::min(start, text.size());
 +  for (int lineNumber = 0; lineNumber < maxLines && position < text.size(); lineNumber++) {
 +    while (position < text.size() && (text[position] == ' ' || text[position] == '\t')) position++;
@@ -12711,16 +12813,24 @@ index 0000000..64140d7
 +    }
 +
 +    const size_t lineStart = position;
++    const bool lineBold = boldStateAt(text, lineStart);
 +    size_t scan = position;
 +    size_t lineEnd = position;
 +    size_t nextPosition = position;
 +    size_t lastBreak = std::string::npos;
 +
 +    while (scan < text.size() && text[scan] != '\n') {
-+      const size_t next = nextUtf8Boundary(text, scan);
-+      if (text[scan] == ' ' || text[scan] == '\t') lastBreak = next;
-+      const std::string candidate = text.substr(lineStart, next - lineStart);
-+      if (baseTextWidth(renderer, candidate.c_str(), bold) * scale > width) {
++      size_t next;
++      if (isStyleMarkerAt(text, scan)) {
++        bool scratch = false;
++        next = consumeStyleMarker(text, scan, scratch);
++      } else {
++        next = nextUtf8Boundary(text, scan);
++        if (text[scan] == ' ' || text[scan] == '\t') lastBreak = next;
++      }
++
++      // Width uses the full style timeline from lineStart (markers are zero-width).
++      if (styledRangeWidth(renderer, text, lineStart, next, lineBold) * scale > width) {
 +        if (lastBreak != std::string::npos && lastBreak > lineStart) {
 +          lineEnd = lastBreak;
 +          nextPosition = lastBreak;
@@ -12728,6 +12838,7 @@ index 0000000..64140d7
 +          lineEnd = scan;
 +          nextPosition = scan;
 +        } else {
++          // Force progress: at least one glyph or one marker.
 +          lineEnd = next;
 +          nextPosition = next;
 +        }
@@ -12739,13 +12850,30 @@ index 0000000..64140d7
 +    }
 +
 +    if (scan < text.size() && text[scan] == '\n' && nextPosition == scan) nextPosition++;
-+    std::string line = text.substr(lineStart, lineEnd - lineStart);
-+    while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.pop_back();
++
++    // Trim trailing spaces/tabs only (keep style markers).
++    size_t trimEnd = lineEnd;
++    while (trimEnd > lineStart) {
++      const char ch = text[trimEnd - 1];
++      if (ch == ' ' || ch == '\t') {
++        trimEnd--;
++        continue;
++      }
++      break;
++    }
++
 +    // Ascender offset so the first line is not clipped under the header.
 +    const int baseline =
 +        y + lineNumber * lineHeight + renderer.getFontAscenderSize(cardFontId()) * scale;
-+    drawScaledText(renderer, x, baseline, line.c_str(), scale, bold);
-+    if (nextPosition <= position) nextPosition = nextUtf8Boundary(text, position);
++    drawStyledRange(renderer, x, baseline, text, lineStart, trimEnd, scale, lineBold);
++    if (nextPosition <= position) {
++      if (isStyleMarkerAt(text, position)) {
++        bool scratch = lineBold;
++        nextPosition = consumeStyleMarker(text, position, scratch);
++      } else {
++        nextPosition = nextUtf8Boundary(text, position);
++      }
++    }
 +    position = nextPosition;
 +  }
 +  return position;
