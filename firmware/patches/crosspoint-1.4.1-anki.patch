@@ -11824,10 +11824,10 @@ index a259603..110fe88 100755
    done
  done
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
-index ecd7b0e..bae3692 100644
+index ecd7b0e..34b0901 100644
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -8,6 +8,45 @@ STR_SLEEPING: "SLEEPING"
+@@ -8,6 +8,50 @@ STR_SLEEPING: "SLEEPING"
  STR_ENTERING_SLEEP: "Going to sleep"
  STR_BROWSE_FILES: "Browse Files"
  STR_FILE_TRANSFER: "File Transfer"
@@ -11868,16 +11868,21 @@ index ecd7b0e..bae3692 100644
 +STR_ANKI_ORIENTATION: "Orientation"
 +STR_ANKI_ORIENT_PORTRAIT: "Portrait"
 +STR_ANKI_ORIENT_LANDSCAPE: "Landscape"
++STR_ANKI_MAX_PER_DECK: "Max cards / deck"
++STR_ANKI_MAX_TOTAL: "Max cards total"
++STR_ANKI_CARD_FONT: "Card font"
++STR_ANKI_CARD_FONT_UI: "UI (DE/Greek)"
++STR_ANKI_CARD_FONT_READER: "Reader / SD font"
 +STR_ANKI_EMPTY_SIDE: "[no text]"
 +STR_ANKI_DECKS_LOADED: "decks loaded"
  STR_SETTINGS_TITLE: "Settings"
  STR_CONTINUE_READING: "Continue Reading"
  STR_NO_OPEN_BOOK: "No open book"
 diff --git a/lib/I18n/translations/german.yaml b/lib/I18n/translations/german.yaml
-index a7c1ad0..d201eb9 100644
+index a7c1ad0..faf6d08 100644
 --- a/lib/I18n/translations/german.yaml
 +++ b/lib/I18n/translations/german.yaml
-@@ -8,6 +8,45 @@ STR_SLEEPING: "STANDBY"
+@@ -8,6 +8,50 @@ STR_SLEEPING: "STANDBY"
  STR_ENTERING_SLEEP: "Standby"
  STR_BROWSE_FILES: "Durchsuchen"
  STR_FILE_TRANSFER: "Datentransfer"
@@ -11918,6 +11923,11 @@ index a7c1ad0..d201eb9 100644
 +STR_ANKI_ORIENTATION: "Ausrichtung"
 +STR_ANKI_ORIENT_PORTRAIT: "Hochkant"
 +STR_ANKI_ORIENT_LANDSCAPE: "Quer"
++STR_ANKI_MAX_PER_DECK: "Max. Karten / Stapel"
++STR_ANKI_MAX_TOTAL: "Max. Karten gesamt"
++STR_ANKI_CARD_FONT: "Kartenschrift"
++STR_ANKI_CARD_FONT_UI: "UI (DE/Griechisch)"
++STR_ANKI_CARD_FONT_READER: "Reader / SD-Schrift"
 +STR_ANKI_EMPTY_SIDE: "[kein Text]"
 +STR_ANKI_DECKS_LOADED: "Stapel geladen"
  STR_SETTINGS_TITLE: "Einstellungen"
@@ -11976,10 +11986,10 @@ index 9066888..055b1e3 100644
    void goToBoot();
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..a780523
+index 0000000..8478bc3
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,828 @@
+@@ -0,0 +1,831 @@
 +#include "AnkiActivity.h"
 +
 +#include <EpdFontData.h>
@@ -12004,11 +12014,14 @@ index 0000000..a780523
 +#include "fontIds.h"
 +
 +namespace {
-+// Card body uses CrossPoint's reader font (Noto / SD fonts) so any language the
-+// user has fonts for works — not a Greek-only UI glyph pack. UI chrome stays UI_*.
++// Default: UI_12 includes Latin + modern/polytonic Greek (built for Anki).
++// Optional: CrossPoint reader font (Noto / SD fonts via Settings → Font / Fonts).
 +int cardFontId() {
-+  const int reader = SETTINGS.getReaderFontId();
-+  return reader != 0 ? reader : UI_12_FONT_ID;
++  if (ANKI_STORE.usesReaderFont()) {
++    const int reader = SETTINGS.getReaderFontId();
++    if (reader != 0) return reader;
++  }
++  return UI_12_FONT_ID;
 +}
 +
 +size_t nextUtf8Boundary(const std::string& text, const size_t position) {
@@ -12887,15 +12900,16 @@ index 0000000..de5209c
 +};
 diff --git a/src/activities/anki/AnkiSettingsActivity.cpp b/src/activities/anki/AnkiSettingsActivity.cpp
 new file mode 100644
-index 0000000..839cb2f
+index 0000000..8af1c22
 --- /dev/null
 +++ b/src/activities/anki/AnkiSettingsActivity.cpp
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,206 @@
 +#include "AnkiSettingsActivity.h"
 +
 +#include <GfxRenderer.h>
 +#include <I18n.h>
 +
++#include <cstdio>
 +#include <variant>
 +
 +#include "activities/util/ConfirmationActivity.h"
@@ -12905,9 +12919,10 @@ index 0000000..839cb2f
 +#include "fontIds.h"
 +
 +namespace {
-+const StrId MENU_NAMES[6] = {
-+    StrId::STR_ANKI_SERVER_URL,   StrId::STR_ANKI_API_TOKEN,     StrId::STR_ANKI_HANDEDNESS,
-+    StrId::STR_ANKI_FONT_SIZE,    StrId::STR_ANKI_ORIENTATION,   StrId::STR_ANKI_CLEAR_LOCAL,
++const StrId MENU_NAMES[9] = {
++    StrId::STR_ANKI_SERVER_URL,     StrId::STR_ANKI_API_TOKEN,       StrId::STR_ANKI_HANDEDNESS,
++    StrId::STR_ANKI_FONT_SIZE,      StrId::STR_ANKI_ORIENTATION,     StrId::STR_ANKI_MAX_PER_DECK,
++    StrId::STR_ANKI_MAX_TOTAL,      StrId::STR_ANKI_CARD_FONT,       StrId::STR_ANKI_CLEAR_LOCAL,
 +};
 +
 +const char* fontScaleLabel(const uint8_t scale) {
@@ -12920,6 +12935,12 @@ index 0000000..839cb2f
 +    default:
 +      return tr(STR_ANKI_FONT_MEDIUM);
 +  }
++}
++
++std::string formatCount(const uint16_t value) {
++  char buf[16];
++  snprintf(buf, sizeof(buf), "%u", static_cast<unsigned int>(value));
++  return std::string(buf);
 +}
 +}  // namespace
 +
@@ -13006,6 +13027,24 @@ index 0000000..839cb2f
 +    return;
 +  }
 +
++  if (selectedIndex == 5) {
++    ANKI_STORE.cycleMaxCardsPerDeck();
++    saveConfig();
++    return;
++  }
++
++  if (selectedIndex == 6) {
++    ANKI_STORE.cycleMaxCardsTotal();
++    saveConfig();
++    return;
++  }
++
++  if (selectedIndex == 7) {
++    ANKI_STORE.cycleCardFontSource();
++    saveConfig();
++    return;
++  }
++
 +  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_ANKI_CLEAR_LOCAL),
 +                                                                tr(STR_ANKI_CLEAR_CONFIRM)),
 +                         [this](const ActivityResult& result) {
@@ -13049,6 +13088,16 @@ index 0000000..839cb2f
 +          return std::string(ANKI_STORE.isLandscapeCards() ? tr(STR_ANKI_ORIENT_LANDSCAPE)
 +                                                           : tr(STR_ANKI_ORIENT_PORTRAIT));
 +        }
++        if (index == 5) {
++          return formatCount(ANKI_STORE.getMaxCardsPerDeck());
++        }
++        if (index == 6) {
++          return formatCount(ANKI_STORE.getMaxCardsTotal());
++        }
++        if (index == 7) {
++          return std::string(ANKI_STORE.usesReaderFont() ? tr(STR_ANKI_CARD_FONT_READER)
++                                                         : tr(STR_ANKI_CARD_FONT_UI));
++        }
 +        return std::string("");
 +      },
 +      true);
@@ -13063,10 +13112,10 @@ index 0000000..839cb2f
 +}
 diff --git a/src/activities/anki/AnkiSettingsActivity.h b/src/activities/anki/AnkiSettingsActivity.h
 new file mode 100644
-index 0000000..a1be8c3
+index 0000000..520983e
 --- /dev/null
 +++ b/src/activities/anki/AnkiSettingsActivity.h
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,26 @@
 +#pragma once
 +
 +#include <string>
@@ -13084,7 +13133,8 @@ index 0000000..a1be8c3
 +  void render(RenderLock&&) override;
 +
 + private:
-+  static constexpr int MENU_ITEMS = 6;
++  // Server, token, handedness, font size, orientation, max/deck, max/total, card font, clear
++  static constexpr int MENU_ITEMS = 9;
 +  ButtonNavigator buttonNavigator;
 +  int selectedIndex = 0;
 +  std::string statusMessage;
@@ -13165,10 +13215,10 @@ index 6d170cd..6c05551 100644
    bool storeCoverBuffer();    // Store frame buffer for cover image
 diff --git a/src/anki/AnkiStore.cpp b/src/anki/AnkiStore.cpp
 new file mode 100644
-index 0000000..0f329b0
+index 0000000..afdb406
 --- /dev/null
 +++ b/src/anki/AnkiStore.cpp
-@@ -0,0 +1,732 @@
+@@ -0,0 +1,753 @@
 +#include "AnkiStore.h"
 +
 +#include <ArduinoJson.h>
@@ -13305,6 +13355,7 @@ index 0000000..0f329b0
 +  leftHanded = false;
 +  maxCardsPerDeck = 250;
 +  maxCardsTotal = 1000;
++  useReaderFont = false;
 +  fontScale = 2;
 +  cardOrientation = 0;
 +  if (!Storage.exists(CONFIG_PATH)) return true;
@@ -13329,6 +13380,7 @@ index 0000000..0f329b0
 +  leftHanded = doc["left_handed"] | false;
 +  setMaxCardsPerDeck(static_cast<uint16_t>(doc["max_cards_per_deck"] | 250));
 +  setMaxCardsTotal(static_cast<uint16_t>(doc["max_cards_total"] | 1000));
++  useReaderFont = doc["use_reader_font"] | false;
 +  const int scale = doc["font_scale"] | 2;
 +  fontScale = static_cast<uint8_t>(scale < 1 ? 1 : (scale > 3 ? 3 : scale));
 +  const int orient = doc["card_orientation"] | 0;
@@ -13345,6 +13397,7 @@ index 0000000..0f329b0
 +  doc["left_handed"] = leftHanded;
 +  doc["max_cards_per_deck"] = maxCardsPerDeck;
 +  doc["max_cards_total"] = maxCardsTotal;
++  doc["use_reader_font"] = useReaderFont;
 +  doc["font_scale"] = fontScale;
 +  doc["card_orientation"] = cardOrientation;
 +
@@ -13378,6 +13431,24 @@ index 0000000..0f329b0
 +  maxCardsTotal = value < 1 ? 1 : (value > MAX_CARDS ? MAX_CARDS : value);
 +  if (maxCardsPerDeck > maxCardsTotal) maxCardsPerDeck = maxCardsTotal;
 +}
++
++namespace {
++uint16_t nextLimitStep(const uint16_t current) {
++  static constexpr uint16_t kSteps[] = {50, 100, 150, 250, 500, 750, 1000};
++  for (const uint16_t step : kSteps) {
++    if (step > current) return step;
++  }
++  return kSteps[0];
++}
++}  // namespace
++
++void AnkiStore::cycleMaxCardsPerDeck() { setMaxCardsPerDeck(nextLimitStep(maxCardsPerDeck)); }
++
++void AnkiStore::cycleMaxCardsTotal() { setMaxCardsTotal(nextLimitStep(maxCardsTotal)); }
++
++void AnkiStore::setUseReaderFont(const bool value) { useReaderFont = value; }
++
++void AnkiStore::cycleCardFontSource() { useReaderFont = !useReaderFont; }
 +
 +void AnkiStore::setFontScale(const uint8_t scale) {
 +  fontScale = scale < 1 ? 1 : (scale > 3 ? 3 : scale);
@@ -13903,10 +13974,10 @@ index 0000000..0f329b0
 +}
 diff --git a/src/anki/AnkiStore.h b/src/anki/AnkiStore.h
 new file mode 100644
-index 0000000..5276ceb
+index 0000000..26c10d2
 --- /dev/null
 +++ b/src/anki/AnkiStore.h
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,136 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -13952,6 +14023,14 @@ index 0000000..5276ceb
 +  uint16_t getMaxCardsTotal() const { return maxCardsTotal; }
 +  void setMaxCardsPerDeck(uint16_t value);
 +  void setMaxCardsTotal(uint16_t value);
++  void cycleMaxCardsPerDeck();
++  void cycleMaxCardsTotal();
++
++  // false (default): UI_12 with built-in DE/Greek glyphs.
++  // true: CrossPoint reader font (Noto / SD fonts under Settings → Font / Fonts page).
++  bool usesReaderFont() const { return useReaderFont; }
++  void setUseReaderFont(bool value);
++  void cycleCardFontSource();
 +
 +  // 1=small, 2=medium (default), 3=large — integer pixel scale for card text
 +  uint8_t getFontScale() const { return fontScale; }
@@ -14016,6 +14095,7 @@ index 0000000..5276ceb
 +  bool leftHanded = false;
 +  uint16_t maxCardsPerDeck = 250;
 +  uint16_t maxCardsTotal = 1000;
++  bool useReaderFont = false;     // default UI font (Greek/Latin)
 +  uint8_t fontScale = 2;          // medium by default
 +  uint8_t cardOrientation = 0;    // 0 portrait, 1 landscape
 +  std::string batchId;
@@ -14409,7 +14489,7 @@ index f04f7de..49424cf 100644
          return nullptr;
      }
 diff --git a/src/network/CrossPointWebServer.cpp b/src/network/CrossPointWebServer.cpp
-index dc54dd8..f255951 100644
+index dc54dd8..ed6900e 100644
 --- a/src/network/CrossPointWebServer.cpp
 +++ b/src/network/CrossPointWebServer.cpp
 @@ -17,6 +17,7 @@
@@ -14456,7 +14536,7 @@ index dc54dd8..f255951 100644
    // Font management endpoints
    server->on("/fonts", HTTP_GET, [this] { handleFontsPage(); });
    server->on("/api/fonts", HTTP_GET, [this] { handleFontList(); });
-@@ -1271,6 +1294,122 @@ void CrossPointWebServer::handlePostSettings() {
+@@ -1271,6 +1294,131 @@ void CrossPointWebServer::handlePostSettings() {
    server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");
  }
  
@@ -14475,6 +14555,7 @@ index dc54dd8..f255951 100644
 +  doc["configured"] = ANKI_STORE.configured();
 +  doc["maxCardsPerDeck"] = ANKI_STORE.getMaxCardsPerDeck();
 +  doc["maxCardsTotal"] = ANKI_STORE.getMaxCardsTotal();
++  doc["useReaderFont"] = ANKI_STORE.usesReaderFont();
 +
 +  String json;
 +  serializeJson(doc, json);
@@ -14509,6 +14590,7 @@ index dc54dd8..f255951 100644
 +  const std::string previousApiToken = ANKI_STORE.getApiToken();
 +  const uint16_t previousMaxPerDeck = ANKI_STORE.getMaxCardsPerDeck();
 +  const uint16_t previousMaxTotal = ANKI_STORE.getMaxCardsTotal();
++  const bool previousUseReaderFont = ANKI_STORE.usesReaderFont();
 +  bool changed = false;
 +
 +  if (doc["serverUrl"].is<const char*>() || doc["serverUrl"].is<std::string>()) {
@@ -14558,6 +14640,12 @@ index dc54dd8..f255951 100644
 +    changed = changed || ANKI_STORE.getMaxCardsTotal() != previousMaxTotal;
 +  }
 +
++  if (doc["useReaderFont"].is<bool>() || doc["useReaderFont"].is<int>() || doc["useReaderFont"].is<unsigned int>()) {
++    const bool value = doc["useReaderFont"].as<bool>() || doc["useReaderFont"].as<int>() != 0;
++    ANKI_STORE.setUseReaderFont(value);
++    changed = changed || ANKI_STORE.usesReaderFont() != previousUseReaderFont;
++  }
++
 +  if (!changed) {
 +    server->send(200, "text/plain", "No Anki settings changed");
 +    return;
@@ -14568,12 +14656,13 @@ index dc54dd8..f255951 100644
 +    ANKI_STORE.setApiToken(previousApiToken);
 +    ANKI_STORE.setMaxCardsPerDeck(previousMaxPerDeck);
 +    ANKI_STORE.setMaxCardsTotal(previousMaxTotal);
++    ANKI_STORE.setUseReaderFont(previousUseReaderFont);
 +    server->send(500, "text/plain", error.c_str());
 +    return;
 +  }
 +
 +  server->send(200, "text/plain", "Anki settings saved");
-+  LOG_DBG("WEB", "Saved Anki settings (URL/token/limits)");
++  LOG_DBG("WEB", "Saved Anki settings (URL/token/limits/font)");
 +}
 +
  // ---- OPDS Server API ----
@@ -14595,7 +14684,7 @@ index fc1aaf6..e39de62 100644
    void handleFontsPage() const;
    void handleFontList() const;
 diff --git a/src/network/html/SettingsPage.html b/src/network/html/SettingsPage.html
-index 8b3bee4..af89fef 100644
+index 8b3bee4..96efb94 100644
 --- a/src/network/html/SettingsPage.html
 +++ b/src/network/html/SettingsPage.html
 @@ -300,6 +300,7 @@
@@ -14606,7 +14695,7 @@ index 8b3bee4..af89fef 100644
    <div id="wifi-container"></div>
    <div id="opds-container"></div>
  
-@@ -598,6 +599,122 @@
+@@ -598,6 +599,135 @@
  
    loadSettings();
  
@@ -14618,7 +14707,8 @@ index 8b3bee4..af89fef 100644
 +    hasApiToken: false,
 +    configured: false,
 +    maxCardsPerDeck: 250,
-+    maxCardsTotal: 1000
++    maxCardsTotal: 1000,
++    useReaderFont: false
 +  };
 +
 +  function renderAnkiSection() {
@@ -14629,6 +14719,7 @@ index 8b3bee4..af89fef 100644
 +      : '<div style="margin-top:8px;color:#e67e22;font-size:0.9em;">Server URL and API token are required</div>';
 +    const maxPerDeck = ankiConfig.maxCardsPerDeck != null ? ankiConfig.maxCardsPerDeck : 250;
 +    const maxTotal = ankiConfig.maxCardsTotal != null ? ankiConfig.maxCardsTotal : 1000;
++    const useReaderFont = !!ankiConfig.useReaderFont;
 +
 +    container.innerHTML =
 +      '<div class="card"><h2>Anki Offline Sync</h2>' +
@@ -14642,20 +14733,29 @@ index 8b3bee4..af89fef 100644
 +          '<span class="setting-control"><input type="password" id="anki-api-token" autocomplete="new-password" ' +
 +            'placeholder="' + tokenPlaceholder + '"></span>' +
 +        '</div>' +
++        '<h3 style="margin:16px 0 8px 0;font-size:1em;color:var(--title-color);">Pull limits</h3>' +
 +        '<div class="setting-row">' +
-+          '<span class="setting-name">Max cards per deck</span>' +
++          '<span class="setting-name">Max cards per deck <span style="color:var(--label-color);font-weight:400;">(1–1000)</span></span>' +
 +          '<span class="setting-control"><input type="number" id="anki-max-per-deck" min="1" max="1000" step="1" ' +
 +            'value="' + maxPerDeck + '"></span>' +
 +        '</div>' +
 +        '<div class="setting-row">' +
-+          '<span class="setting-name">Max cards total</span>' +
++          '<span class="setting-name">Max cards total <span style="color:var(--label-color);font-weight:400;">(1–1000)</span></span>' +
 +          '<span class="setting-control"><input type="number" id="anki-max-total" min="1" max="1000" step="1" ' +
 +            'value="' + maxTotal + '"></span>' +
 +        '</div>' +
-+        '<p style="color:var(--label-color);font-size:0.9em;">' +
-+          'Stored on the X4 and sent on each pull. Leave the token blank to keep the existing token. ' +
-+          'Card text uses the same font as the e-book reader (Settings → Font / SD fonts) for any language. ' +
-+          'For a stable address, reserve the Mac&apos;s IP in your router.' +
++        '<h3 style="margin:16px 0 8px 0;font-size:1em;color:var(--title-color);">Card font (languages)</h3>' +
++        '<div class="setting-row">' +
++          '<span class="setting-name">Use reader / SD font</span>' +
++          '<span class="setting-control"><label class="toggle-switch">' +
++            '<input type="checkbox" id="anki-use-reader-font"' + (useReaderFont ? ' checked' : '') + '>' +
++            '<span class="toggle-slider"></span></label></span>' +
++        '</div>' +
++        '<p style="color:var(--label-color);font-size:0.9em;margin-top:4px;">' +
++          '<strong>Off (default):</strong> UI font with German + modern/polytonic Greek.<br>' +
++          '<strong>On:</strong> same font as e-books (Settings → Font). For other scripts, upload a font family under ' +
++          '<a href="/fonts">Fonts</a>, then select it as the reader font.<br>' +
++          'Pull limits are stored on the X4 and sent on each pull. Leave the token blank to keep the existing token.' +
 +        '</p>' +
 +        status +
 +        '<div class="opds-actions">' +
@@ -14682,6 +14782,7 @@ index 8b3bee4..af89fef 100644
 +    const apiToken = document.getElementById('anki-api-token').value.trim();
 +    const maxCardsPerDeck = parseInt(document.getElementById('anki-max-per-deck').value, 10);
 +    const maxCardsTotal = parseInt(document.getElementById('anki-max-total').value, 10);
++    const useReaderFont = document.getElementById('anki-use-reader-font').checked;
 +    if (!/^https?:\/\/[^\s/?#]+(?::\d+)?(?:\/[^?#\s]*)?$/.test(serverUrl)) {
 +      showMessage('Enter a valid http:// or https:// Mac server URL.', true);
 +      return;
@@ -14702,7 +14803,8 @@ index 8b3bee4..af89fef 100644
 +    const data = {
 +      serverUrl: serverUrl,
 +      maxCardsPerDeck: maxCardsPerDeck,
-+      maxCardsTotal: maxCardsTotal
++      maxCardsTotal: maxCardsTotal,
++      useReaderFont: useReaderFont
 +    };
 +    if (apiToken) data.apiToken = apiToken;
 +    const button = document.getElementById('anki-save-btn');
@@ -14729,7 +14831,7 @@ index 8b3bee4..af89fef 100644
    // --- Wi-Fi Network Management ---
    // Renders an editable list of saved Wi-Fi networks using /api/wifi endpoints.
    // Password fields are never pre-filled; when left blank during edit, existing
-@@ -825,6 +942,7 @@
+@@ -825,6 +955,7 @@
      }
    }
  

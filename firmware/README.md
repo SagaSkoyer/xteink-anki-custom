@@ -17,18 +17,17 @@ Der Patch ergänzt:
 - Auswahl und Wechsel zwischen geladenen Stapeln am Gerät,
 - persistente Karten, pro-Stapel-Warteschlangen und Bewertungen auf der SD-Karte,
 - Offline-Anzeige von Frage und Antwort mit mehrseitigem Text,
-- Konfigurierbare Schriftgröße (Klein/Mittel/Groß) und Ausrichtung
-  (Hochkant/Quer) in den Anki-Einstellungen,
-- Händigkeit (links/rechts) in den Anki-Einstellungen,
+- **Kartenschrift:** Standard UI-Schrift mit Deutsch + modernem/polytonischem
+  Griechisch; optional Reader-/SD-Schrift für weitere Sprachen,
+- **Max. Karten pro Stapel** und **gesamt** in Geräte- und Web-Einstellungen
+  (werden beim Pull an das Add-on gesendet),
+- Schriftgröße (Klein/Mittel/Groß), Ausrichtung (Hochkant/Quer), Händigkeit,
 - Blättern über die Seitentasten (Page Up/Down),
 - Platzhalter bei leeren Kartenseiten; Mac-Add-on mit Feld-Fallback,
-- deutsche sowie moderne und polytonische griechische Schriftzeichen in der
-  eingebetteten Anki-Schrift,
 - Bewertungen `Nochmal`, `Schwer`, `Gut` und `Einfach`,
 - erneute lokale Einplanung von Lernkarten nach `Nochmal`/`Schwer`,
 - fehlertoleranten Upload mit Batch-ID sowie
-- Eingabe von Mac-Serveradresse und API-Token am X4 oder komfortabel im
-  CrossPoint-Webzugang.
+- Eingabe von Mac-Serveradresse und API-Token am X4 oder im CrossPoint-Webzugang.
 
 ## Bauen
 
@@ -66,14 +65,23 @@ Updates müssen Stromversorgung und SD-Karte verbunden bleiben.
 2. Am Mac die auf dem X4 angezeigte Adresse oder
    `http://crosspoint.local/settings` öffnen.
 3. Unter **Anki Offline Sync** eintragen:
-   - `Mac server URL`, zum Beispiel `http://192.168.1.23:5050`
-   - `API token` aus **Werkzeuge → Xteink Status** in Anki
-   - `Max cards per deck` und `Max cards total` (werden beim Pull mitgeschickt)
+   - **Mac-Server-URL**, z. B. `http://192.168.1.23:5050`
+   - **API-Token** aus **Werkzeuge → Xteink Status** in Anki
+   - **Max. Karten pro Stapel** und **Max. Karten gesamt** (1–1000; werden
+     beim Pull mitgeschickt)
+   - **Kartenschrift / Use reader / SD font:** aus = UI-Schrift mit
+     Deutsch/Griechisch; an = Reader- oder SD-Schrift
 4. **Save Anki settings** wählen.
 
-Kartentext nutzt die **Reader-Schrift** von CrossPoint (Noto oder SD-Fonts unter
-**Fonts**). So sind beliebige Sprachen möglich, nicht nur griechische Glyphen
-in der UI-Schrift.
+**Kartenschrift (Sprachen):**
+
+- **Standard (empfohlen für Griechisch):** UI-Schrift mit Deutsch sowie
+  modernem und polytonischem Griechisch. Am Gerät:
+  **Anki → Anki-Einstellungen → Kartenschrift → UI (DE/Griechisch)**.
+- **Andere Schriften/Sprachen:** Unter **Fonts** eine Schriftfamilie
+  hochladen, in **Einstellungen → Schrift** wählen, dann in Anki
+  **Kartenschrift → Reader / SD-Schrift** bzw. im Web den Schalter
+  **Use reader / SD font** einschalten.
 
 Das Token ist im Webzugang nur beschreibbar: Ein gespeichertes Token wird
 nicht an den Browser zurückgesendet. Ein leeres Tokenfeld behält den bisherigen
@@ -89,6 +97,8 @@ In **Anki → Anki-Einstellungen** werden eingetragen:
 
 - `Mac-Serveradresse`: zum Beispiel `http://192.168.1.23:5050`
 - `API-Token`: aus **Werkzeuge → Xteink Status** in Anki
+- `Max. Karten / Stapel` und `Max. Karten gesamt` (per Bestätigen durchschalten)
+- `Kartenschrift`: UI (DE/Griechisch) oder Reader / SD-Schrift
 
 Danach:
 

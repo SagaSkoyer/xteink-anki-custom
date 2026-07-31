@@ -42,7 +42,7 @@ from .protocol import (
 from . import textutil
 
 
-ADDON_VERSION = "2.3.0"
+ADDON_VERSION = "2.3.1"
 PROTOCOL_VERSION = 2
 # Hard safety caps; config and pull query params are clamped to these.
 MAX_CARDS_PER_DECK_LIMIT = 1000
@@ -563,6 +563,11 @@ class XteinkAddon:
         loaded = mw.addonManager.getConfig(__name__) or {}
         self.config = dict(DEFAULT_CONFIG)
         self.config.update(loaded)
+        # Persist any new default keys (e.g. max_total_cards) so they appear
+        # in Tools → Add-ons → Config.
+        missing_defaults = [key for key in DEFAULT_CONFIG if key not in loaded]
+        if missing_defaults:
+            mw.addonManager.writeConfig(__name__, self.config)
 
         token = str(self.config.get("api_token", "")).strip()
         if not token:
