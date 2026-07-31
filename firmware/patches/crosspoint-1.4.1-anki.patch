@@ -1,5 +1,5 @@
 diff --git a/docs/webserver-endpoints.md b/docs/webserver-endpoints.md
-index bb3c6421..6168b159 100644
+index bb3c642..6168b15 100644
 --- a/docs/webserver-endpoints.md
 +++ b/docs/webserver-endpoints.md
 @@ -247,6 +247,36 @@ Successful response:
@@ -40,7 +40,7 @@ index bb3c6421..6168b159 100644
  
  ### `GET /api/fonts`
 diff --git a/lib/EpdFont/builtinFonts/ubuntu_12_bold.h b/lib/EpdFont/builtinFonts/ubuntu_12_bold.h
-index 552dc083..b021d8e4 100644
+index 552dc08..b021d8e 100644
 --- a/lib/EpdFont/builtinFonts/ubuntu_12_bold.h
 +++ b/lib/EpdFont/builtinFonts/ubuntu_12_bold.h
 @@ -3,12 +3,12 @@
@@ -5882,7 +5882,7 @@ index 552dc083..b021d8e4 100644
      5,
  };
 diff --git a/lib/EpdFont/builtinFonts/ubuntu_12_regular.h b/lib/EpdFont/builtinFonts/ubuntu_12_regular.h
-index df9fa07f..821f735e 100644
+index df9fa07..821f735 100644
 --- a/lib/EpdFont/builtinFonts/ubuntu_12_regular.h
 +++ b/lib/EpdFont/builtinFonts/ubuntu_12_regular.h
 @@ -3,12 +3,12 @@
@@ -11796,7 +11796,7 @@ index df9fa07f..821f735e 100644
      5,
  };
 diff --git a/lib/EpdFont/scripts/convert-builtin-fonts.sh b/lib/EpdFont/scripts/convert-builtin-fonts.sh
-index a259603a..110fe88a 100755
+index a259603..110fe88 100755
 --- a/lib/EpdFont/scripts/convert-builtin-fonts.sh
 +++ b/lib/EpdFont/scripts/convert-builtin-fonts.sh
 @@ -41,9 +41,21 @@ for size in ${UI_FONT_SIZES[@]}; do
@@ -11824,10 +11824,10 @@ index a259603a..110fe88a 100755
    done
  done
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
-index ecd7b0e0..85e9b739 100644
+index ecd7b0e..bae3692 100644
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -8,6 +8,30 @@ STR_SLEEPING: "SLEEPING"
+@@ -8,6 +8,45 @@ STR_SLEEPING: "SLEEPING"
  STR_ENTERING_SLEEP: "Going to sleep"
  STR_BROWSE_FILES: "Browse Files"
  STR_FILE_TRANSFER: "File Transfer"
@@ -11847,6 +11847,7 @@ index ecd7b0e0..85e9b739 100644
 +STR_ANKI_PULL_OK: "Cards downloaded"
 +STR_ANKI_PUSH_OK: "Reviews uploaded"
 +STR_ANKI_OFFLINE_DONE: "All cards reviewed. Upload when Anki is open on the Mac."
++STR_ANKI_DECK_DONE: "Deck finished. Choose another deck or upload reviews."
 +STR_ANKI_QUESTION: "Question"
 +STR_ANKI_ANSWER: "Answer"
 +STR_ANKI_AGAIN: "Again"
@@ -11855,14 +11856,28 @@ index ecd7b0e0..85e9b739 100644
 +STR_ANKI_EASY: "Easy"
 +STR_ANKI_SIDE_PAGES: "Side buttons: pages"
 +STR_ANKI_REMAINING_FORMAT: "%u remaining"
++STR_ANKI_PROGRESS_FORMAT: "%u/%u · %u%%"
++STR_ANKI_DECK_FINISHED: "done"
++STR_ANKI_HANDEDNESS: "Handedness"
++STR_ANKI_LEFT_HANDED: "Left-handed"
++STR_ANKI_RIGHT_HANDED: "Right-handed"
++STR_ANKI_FONT_SIZE: "Font size"
++STR_ANKI_FONT_SMALL: "Small"
++STR_ANKI_FONT_MEDIUM: "Medium"
++STR_ANKI_FONT_LARGE: "Large"
++STR_ANKI_ORIENTATION: "Orientation"
++STR_ANKI_ORIENT_PORTRAIT: "Portrait"
++STR_ANKI_ORIENT_LANDSCAPE: "Landscape"
++STR_ANKI_EMPTY_SIDE: "[no text]"
++STR_ANKI_DECKS_LOADED: "decks loaded"
  STR_SETTINGS_TITLE: "Settings"
  STR_CONTINUE_READING: "Continue Reading"
  STR_NO_OPEN_BOOK: "No open book"
 diff --git a/lib/I18n/translations/german.yaml b/lib/I18n/translations/german.yaml
-index a7c1ad08..f926800d 100644
+index a7c1ad0..d201eb9 100644
 --- a/lib/I18n/translations/german.yaml
 +++ b/lib/I18n/translations/german.yaml
-@@ -8,6 +8,30 @@ STR_SLEEPING: "STANDBY"
+@@ -8,6 +8,45 @@ STR_SLEEPING: "STANDBY"
  STR_ENTERING_SLEEP: "Standby"
  STR_BROWSE_FILES: "Durchsuchen"
  STR_FILE_TRANSFER: "Datentransfer"
@@ -11882,19 +11897,34 @@ index a7c1ad08..f926800d 100644
 +STR_ANKI_PULL_OK: "Karten wurden geladen"
 +STR_ANKI_PUSH_OK: "Bewertungen wurden übertragen"
 +STR_ANKI_OFFLINE_DONE: "Alle Karten gelernt. Übertragen, wenn Anki auf dem Mac geöffnet ist."
++STR_ANKI_DECK_DONE: "Stapel fertig. Anderen Stapel wählen oder Bewertungen übertragen."
 +STR_ANKI_QUESTION: "Frage"
 +STR_ANKI_ANSWER: "Antwort"
 +STR_ANKI_AGAIN: "Nochmal"
 +STR_ANKI_HARD: "Schwer"
 +STR_ANKI_GOOD: "Gut"
 +STR_ANKI_EASY: "Einfach"
-+STR_ANKI_SIDE_PAGES: "Seitentasten: blättern"
++STR_ANKI_SIDE_PAGES: "Seiten: blättern"
 +STR_ANKI_REMAINING_FORMAT: "%u übrig"
++STR_ANKI_PROGRESS_FORMAT: "%u/%u · %u%%"
++STR_ANKI_DECK_FINISHED: "fertig"
++STR_ANKI_HANDEDNESS: "Händigkeit"
++STR_ANKI_LEFT_HANDED: "Linkshändig"
++STR_ANKI_RIGHT_HANDED: "Rechtshändig"
++STR_ANKI_FONT_SIZE: "Schriftgröße"
++STR_ANKI_FONT_SMALL: "Klein"
++STR_ANKI_FONT_MEDIUM: "Mittel"
++STR_ANKI_FONT_LARGE: "Groß"
++STR_ANKI_ORIENTATION: "Ausrichtung"
++STR_ANKI_ORIENT_PORTRAIT: "Hochkant"
++STR_ANKI_ORIENT_LANDSCAPE: "Quer"
++STR_ANKI_EMPTY_SIDE: "[kein Text]"
++STR_ANKI_DECKS_LOADED: "Stapel geladen"
  STR_SETTINGS_TITLE: "Einstellungen"
  STR_CONTINUE_READING: "Weiterlesen"
  STR_NO_OPEN_BOOK: "Aktuell kein Buch"
 diff --git a/src/activities/ActivityManager.cpp b/src/activities/ActivityManager.cpp
-index 96e85460..95d91fd5 100644
+index 96e8546..95d91fd 100644
 --- a/src/activities/ActivityManager.cpp
 +++ b/src/activities/ActivityManager.cpp
 @@ -6,6 +6,7 @@
@@ -11924,7 +11954,7 @@ index 96e85460..95d91fd5 100644
        initialMenuItem = HomeMenuItem::FILE_TRANSFER;
      } else if (activityName == "Settings") {
 diff --git a/src/activities/ActivityManager.h b/src/activities/ActivityManager.h
-index 9066888d..055b1e34 100644
+index 9066888..055b1e3 100644
 --- a/src/activities/ActivityManager.h
 +++ b/src/activities/ActivityManager.h
 @@ -16,7 +16,7 @@
@@ -11946,14 +11976,18 @@ index 9066888d..055b1e34 100644
    void goToBoot();
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 00000000..c5cde1bc
+index 0000000..92047e2
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,483 @@
+@@ -0,0 +1,821 @@
 +#include "AnkiActivity.h"
 +
++#include <EpdFontData.h>
++#include <EpdFontFamily.h>
 +#include <GfxRenderer.h>
++#include <HalGPIO.h>
 +#include <I18n.h>
++#include <Utf8.h>
 +#include <WiFi.h>
 +#include <esp_wifi.h>
 +
@@ -11969,6 +12003,8 @@ index 00000000..c5cde1bc
 +#include "fontIds.h"
 +
 +namespace {
++constexpr int kCardFontId = UI_12_FONT_ID;
++
 +size_t nextUtf8Boundary(const std::string& text, const size_t position) {
 +  if (position >= text.size()) return text.size();
 +  const unsigned char lead = static_cast<unsigned char>(text[position]);
@@ -11982,7 +12018,7 @@ index 00000000..c5cde1bc
 +  return std::min(text.size(), position + bytes);
 +}
 +
-+const char* menuLabel(const AnkiActivity::MenuAction action) {
++const char* staticMenuLabel(const AnkiActivity::MenuAction action) {
 +  switch (action) {
 +    case AnkiActivity::MenuAction::LEARN:
 +      return tr(STR_ANKI_LEARN);
@@ -11992,13 +12028,175 @@ index 00000000..c5cde1bc
 +      return tr(STR_ANKI_UPLOAD);
 +    case AnkiActivity::MenuAction::CONFIGURE:
 +      return tr(STR_ANKI_SETTINGS);
++    case AnkiActivity::MenuAction::DECK:
++      // Real titles come from AnkiStore in renderMenu(); this is only a last-resort label.
++      return tr(STR_ANKI_LEARN);
 +  }
 +  return tr(STR_ANKI);
++}
++
++EpdFontFamily::Style cardStyle(const bool bold) { return bold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR; }
++
++int baseTextWidth(const GfxRenderer& renderer, const char* text, const bool bold) {
++  return renderer.getTextWidth(kCardFontId, text, cardStyle(bold));
++}
++
++// Anki grade ease: 1=Again, 2=Hard, 3=Good, 4=Easy.
++//
++// drawButtonHints paints labels in HW slot order BACK, CONFIRM, LEFT, RIGHT at
++// increasing portrait X — same order as CrossPoint / ButtonRemap (leftmost = BACK).
++// Grade presses and labels share these tables so they stay in lockstep.
++//
++// RH L→R: Again, Hard, Good, Easy
++// LH: independent table (do not derive by reversing RH — keeps current LH behavior)
++constexpr int kHwLtr[4] = {
++    static_cast<int>(HalGPIO::BTN_BACK),     // leftmost / slot 0
++    static_cast<int>(HalGPIO::BTN_CONFIRM),  // slot 1
++    static_cast<int>(HalGPIO::BTN_LEFT),     // slot 2
++    static_cast<int>(HalGPIO::BTN_RIGHT),    // rightmost / slot 3
++};
++
++constexpr uint8_t kRhEaseLtr[4] = {1, 2, 3, 4};  // Again Hard Good Easy
++constexpr StrId kRhLabelLtr[4] = {StrId::STR_ANKI_AGAIN, StrId::STR_ANKI_HARD, StrId::STR_ANKI_GOOD,
++                                  StrId::STR_ANKI_EASY};
++
++// LH grade row (unchanged vs previous on-device mapping with mirrored RH + reverse).
++constexpr uint8_t kLhEaseLtr[4] = {1, 2, 3, 4};  // Again Hard Good Easy
++constexpr StrId kLhLabelLtr[4] = {StrId::STR_ANKI_AGAIN, StrId::STR_ANKI_HARD, StrId::STR_ANKI_GOOD,
++                                  StrId::STR_ANKI_EASY};
++
++// Returns ease 1..4, or 0 if hw is not a front grade button.
++uint8_t gradeEaseForFrontButton(const int hw, const bool leftHanded) {
++  const uint8_t* easeLtr = leftHanded ? kLhEaseLtr : kRhEaseLtr;
++  for (int i = 0; i < 4; i++) {
++    if (hw != kHwLtr[i]) continue;
++    return easeLtr[i];
++  }
++  return 0;
++}
++
++void drawGradeButtonHints(GfxRenderer& renderer, const bool leftHanded) {
++  const StrId* labelLtr = leftHanded ? kLhLabelLtr : kRhLabelLtr;
++  const char* hwLabels[4] = {
++      I18n::getInstance().get(labelLtr[0]),
++      I18n::getInstance().get(labelLtr[1]),
++      I18n::getInstance().get(labelLtr[2]),
++      I18n::getInstance().get(labelLtr[3]),
++  };
++  GUI.drawButtonHints(renderer, hwLabels[0], hwLabels[1], hwLabels[2], hwLabels[3]);
++}
++
++void drawScaledGlyph(const GfxRenderer& renderer, const EpdFontFamily& font, const uint32_t cp, const int cursorX,
++                     const int baselineY, const int scale, const bool black, const EpdFontFamily::Style style) {
++  const EpdGlyph* glyph = font.getGlyph(cp, style);
++  if (!glyph || scale < 1) return;
++
++  const EpdFontData* fontData = font.getData(style);
++  if (!fontData) return;
++  const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
++  if (!bitmap) return;
++
++  const int baseX = cursorX + glyph->left * scale;
++  const int baseY = baselineY - glyph->top * scale;
++  const int srcW = glyph->width;
++  const int srcH = glyph->height;
++
++  if (fontData->is2Bit) {
++    for (int sy = 0; sy < srcH; sy++) {
++      for (int sx = 0; sx < srcW; sx++) {
++        const int pos = sy * srcW + sx;
++        const uint8_t byte = bitmap[pos >> 2];
++        const uint8_t raw = (byte >> ((3 - (pos & 3)) * 2)) & 0x3;
++        if (raw < 2) continue;
++        for (int dy = 0; dy < scale; dy++) {
++          for (int dx = 0; dx < scale; dx++) {
++            renderer.drawPixel(baseX + sx * scale + dx, baseY + sy * scale + dy, black);
++          }
++        }
++      }
++    }
++  } else {
++    for (int sy = 0; sy < srcH; sy++) {
++      for (int sx = 0; sx < srcW; sx++) {
++        const int pos = sy * srcW + sx;
++        const uint8_t byte = bitmap[pos >> 3];
++        const uint8_t bit = 7 - (pos & 7);
++        if (((byte >> bit) & 1) == 0) continue;
++        for (int dy = 0; dy < scale; dy++) {
++          for (int dx = 0; dx < scale; dx++) {
++            renderer.drawPixel(baseX + sx * scale + dx, baseY + sy * scale + dy, black);
++          }
++        }
++      }
++    }
++  }
++}
++
++int drawScaledText(const GfxRenderer& renderer, const int x, const int y, const char* text, const int scale,
++                   const bool bold) {
++  if (!text || !*text || scale < 1) return x;
++
++  if (scale == 1) {
++    renderer.drawText(kCardFontId, x, y, text, true, cardStyle(bold));
++    return x + renderer.getTextWidth(kCardFontId, text, cardStyle(bold));
++  }
++
++  const auto& fontMap = renderer.getFontMap();
++  const auto fontIt = fontMap.find(kCardFontId);
++  if (fontIt == fontMap.end()) {
++    renderer.drawText(kCardFontId, x, y, text, true, cardStyle(bold));
++    return x + renderer.getTextWidth(kCardFontId, text, cardStyle(bold));
++  }
++
++  const EpdFontFamily& font = fontIt->second;
++  const EpdFontFamily::Style style = cardStyle(bold);
++  const char* cursor = text;
++  uint32_t cp = 0;
++  uint32_t prevCp = 0;
++  int penX = x;
++  int32_t prevAdvanceFP = 0;
++  int lastBaseX = x;
++  int lastBaseLeft = 0;
++  int lastBaseWidth = 0;
++  int lastBaseTop = 0;
++
++  while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&cursor)))) {
++    if (cp >= 0x0591 && cp <= 0x05C7) continue;
++
++    if (utf8IsCombiningMark(cp)) {
++      const EpdGlyph* combiningGlyph = font.getGlyph(cp, style);
++      if (!combiningGlyph) continue;
++      const int raiseBy = combiningMark::raiseAboveBase(combiningGlyph->top, combiningGlyph->height, lastBaseTop);
++      const int combiningX =
++          combiningMark::centerOver(lastBaseX, lastBaseLeft, lastBaseWidth, combiningGlyph->left, combiningGlyph->width);
++      drawScaledGlyph(renderer, font, cp, combiningX, y - raiseBy * scale, scale, true, style);
++      continue;
++    }
++
++    cp = font.applyLigatures(cp, cursor, style);
++    if (prevCp != 0) {
++      const auto kernFP = font.getKerning(prevCp, cp, style);
++      penX += fp4::toPixel(prevAdvanceFP + kernFP) * scale;
++    }
++
++    const EpdGlyph* glyph = font.getGlyph(cp, style);
++    lastBaseX = penX;
++    lastBaseLeft = glyph ? glyph->left : 0;
++    lastBaseWidth = glyph ? glyph->width : 0;
++    lastBaseTop = glyph ? glyph->top : 0;
++    prevAdvanceFP = glyph ? glyph->advanceX : 0;
++    drawScaledGlyph(renderer, font, cp, penX, y, scale, true, style);
++    prevCp = cp;
++  }
++
++  if (prevCp != 0) penX += fp4::toPixel(prevAdvanceFP) * scale;
++  return penX;
 +}
 +}  // namespace
 +
 +void AnkiActivity::onEnter() {
 +  Activity::onEnter();
++  applyUiOrientation(false);
 +  std::string error;
 +  if (!ANKI_STORE.load(error)) {
 +    state = State::ERROR;
@@ -12011,6 +12209,7 @@ index 00000000..c5cde1bc
 +}
 +
 +void AnkiActivity::onExit() {
++  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
 +  Activity::onExit();
 +  if (wifiActivated) {
 +    WiFi.disconnect(false);
@@ -12021,13 +12220,40 @@ index 00000000..c5cde1bc
 +
 +bool AnkiActivity::preventAutoSleep() { return state == State::WORKING; }
 +
++void AnkiActivity::applyUiOrientation(const bool forCard) {
++  if (forCard && ANKI_STORE.isLandscapeCards()) {
++    // Opposite landscape rotation for left-handed so the preferred hand stays
++    // near the control edge (mirrors CrossPoint reader CW/CCW choice).
++    renderer.setOrientation(ANKI_STORE.isLeftHanded() ? GfxRenderer::Orientation::LandscapeClockwise
++                                                     : GfxRenderer::Orientation::LandscapeCounterClockwise);
++  } else {
++    renderer.setOrientation(GfxRenderer::Orientation::Portrait);
++  }
++}
++
 +void AnkiActivity::rebuildMenu() {
-+  menuActions.clear();
-+  if (ANKI_STORE.hasRemainingCards()) menuActions.push_back(MenuAction::LEARN);
-+  if (ANKI_STORE.batchComplete() && ANKI_STORE.hasPendingReviews()) menuActions.push_back(MenuAction::UPLOAD);
-+  if (!ANKI_STORE.hasBatch() && !ANKI_STORE.hasPendingReviews()) menuActions.push_back(MenuAction::DOWNLOAD);
-+  menuActions.push_back(MenuAction::CONFIGURE);
-+  if (selectedIndex >= static_cast<int>(menuActions.size())) selectedIndex = 0;
++  menuItems.clear();
++
++  // List every deck from the last pull so each stack is selectable by name.
++  const uint16_t deckCount = ANKI_STORE.getDeckCount();
++  for (uint16_t i = 0; i < deckCount; i++) {
++    menuItems.push_back(MenuItem{MenuAction::DECK, i});
++  }
++
++  // Fallback if state has cards but no deck metadata (legacy single-queue session).
++  if (deckCount == 0 && ANKI_STORE.hasRemainingCards()) {
++    menuItems.push_back(MenuItem{MenuAction::LEARN, 0});
++  }
++
++  if (ANKI_STORE.hasPendingReviews()) {
++    menuItems.push_back(MenuItem{MenuAction::UPLOAD, 0});
++  }
++  // Re-download only when no pending reviews, so open grades stay consistent.
++  if (!ANKI_STORE.hasPendingReviews()) {
++    menuItems.push_back(MenuItem{MenuAction::DOWNLOAD, 0});
++  }
++  menuItems.push_back(MenuItem{MenuAction::CONFIGURE, 0});
++  if (selectedIndex >= static_cast<int>(menuItems.size())) selectedIndex = 0;
 +}
 +
 +void AnkiActivity::loop() {
@@ -12041,11 +12267,11 @@ index 00000000..c5cde1bc
 +      return;
 +    }
 +    buttonNavigator.onNext([this] {
-+      selectedIndex = ButtonNavigator::nextIndex(selectedIndex, static_cast<int>(menuActions.size()));
++      selectedIndex = ButtonNavigator::nextIndex(selectedIndex, static_cast<int>(menuItems.size()));
 +      requestUpdate();
 +    });
 +    buttonNavigator.onPrevious([this] {
-+      selectedIndex = ButtonNavigator::previousIndex(selectedIndex, static_cast<int>(menuActions.size()));
++      selectedIndex = ButtonNavigator::previousIndex(selectedIndex, static_cast<int>(menuItems.size()));
 +      requestUpdate();
 +    });
 +    return;
@@ -12053,6 +12279,7 @@ index 00000000..c5cde1bc
 +
 +  if (state == State::QUESTION) {
 +    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
++      applyUiOrientation(false);
 +      state = State::MENU;
 +      rebuildMenu();
 +      requestUpdate();
@@ -12062,28 +12289,28 @@ index 00000000..c5cde1bc
 +      showAnswer();
 +      return;
 +    }
-+    handleQuestionPaging();
++    handleCardPaging();
 +    return;
 +  }
 +
 +  if (state == State::ANSWER) {
-+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-+      grade(1);
++    if (mappedInput.wasPressed(MappedInputManager::Button::PageBack) ||
++        mappedInput.wasPressed(MappedInputManager::Button::PageForward) ||
++        mappedInput.wasPressed(MappedInputManager::Button::Up) ||
++        mappedInput.wasPressed(MappedInputManager::Button::Down)) {
++      handleCardPaging();
 +      return;
 +    }
-+    if (mappedInput.wasPressed(MappedInputManager::Button::Left)) {
-+      grade(2);
-+      return;
++    // Grade buttons: physical L→R is Again/Hard/Good/Easy (reversed when left-handed).
++    // See gradeEaseForFrontButton() / drawGradeButtonHints().
++    const int hw = mappedInput.getPressedFrontButton();
++    if (hw >= 0) {
++      const uint8_t ease = gradeEaseForFrontButton(hw, ANKI_STORE.isLeftHanded());
++      if (ease != 0) {
++        grade(ease);
++        return;
++      }
 +    }
-+    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-+      grade(3);
-+      return;
-+    }
-+    if (mappedInput.wasPressed(MappedInputManager::Button::Right)) {
-+      grade(4);
-+      return;
-+    }
-+    handleAnswerPaging();
 +    return;
 +  }
 +
@@ -12093,6 +12320,7 @@ index 00000000..c5cde1bc
 +      if (restartOnDismiss || wifiActivated) {
 +        onGoHome(HomeMenuItem::ANKI);
 +      } else {
++        applyUiOrientation(false);
 +        state = State::MENU;
 +        rebuildMenu();
 +        requestUpdate();
@@ -12102,10 +12330,14 @@ index 00000000..c5cde1bc
 +}
 +
 +void AnkiActivity::handleMenuSelection() {
-+  if (menuActions.empty() || selectedIndex >= static_cast<int>(menuActions.size())) return;
-+  switch (menuActions[selectedIndex]) {
++  if (menuItems.empty() || selectedIndex >= static_cast<int>(menuItems.size())) return;
++  const MenuItem& item = menuItems[selectedIndex];
++  switch (item.action) {
 +    case MenuAction::LEARN:
 +      startReview();
++      break;
++    case MenuAction::DECK:
++      startReviewForDeck(item.deckIndex);
 +      break;
 +    case MenuAction::DOWNLOAD:
 +      startNetworkAction(NetworkAction::PULL);
@@ -12121,6 +12353,7 @@ index 00000000..c5cde1bc
 +                                 state = State::ERROR;
 +                                 message = error;
 +                               } else {
++                                 applyUiOrientation(false);
 +                                 state = State::MENU;
 +                                 rebuildMenu();
 +                               }
@@ -12176,20 +12409,47 @@ index 00000000..c5cde1bc
 +      message = loadError;
 +    } else {
 +      state = State::MESSAGE;
-+      message = networkAction == NetworkAction::PULL ? tr(STR_ANKI_PULL_OK) : tr(STR_ANKI_PUSH_OK);
++      if (networkAction == NetworkAction::PULL) {
++        char buf[96];
++        snprintf(buf, sizeof(buf), "%s\n%u %s", tr(STR_ANKI_PULL_OK),
++                 static_cast<unsigned int>(ANKI_STORE.getDeckCount()), tr(STR_ANKI_DECKS_LOADED));
++        message = buf;
++      } else {
++        message = tr(STR_ANKI_PUSH_OK);
++      }
 +    }
 +  } else {
 +    state = State::ERROR;
 +    message = AnkiSyncClient::errorString(result);
 +    if (!detail.empty() && detail.size() < 512) message += "\n" + detail;
 +  }
-+  restartOnDismiss = true;
++  // After a successful pull, stay in Anki so the new deck list is visible immediately.
++  restartOnDismiss = !(result == AnkiSyncClient::Error::OK && networkAction == NetworkAction::PULL);
 +  networkAction = NetworkAction::NONE;
 +  requestUpdate();
 +}
 +
++void AnkiActivity::startReviewForDeck(const uint16_t deckIndex) {
++  if (!ANKI_STORE.setCurrentDeck(deckIndex)) {
++    state = State::ERROR;
++    message = "Could not select Anki deck";
++    restartOnDismiss = false;
++    requestUpdate();
++    return;
++  }
++  if (!ANKI_STORE.hasRemainingCards()) {
++    state = State::MESSAGE;
++    message = tr(STR_ANKI_DECK_DONE);
++    restartOnDismiss = false;
++    requestUpdate();
++    return;
++  }
++  startReview();
++}
++
 +void AnkiActivity::startReview() {
 +  if (!loadCurrentCard()) return;
++  applyUiOrientation(true);
 +  state = State::QUESTION;
 +  cardStartedAt = millis();
 +  requestUpdate();
@@ -12204,6 +12464,8 @@ index 00000000..c5cde1bc
 +    requestUpdate();
 +    return false;
 +  }
++  if (currentCard.front.empty()) currentCard.front = tr(STR_ANKI_EMPTY_SIDE);
++  if (currentCard.back.empty()) currentCard.back = tr(STR_ANKI_EMPTY_SIDE);
 +  resetPaging();
 +  return true;
 +}
@@ -12218,6 +12480,7 @@ index 00000000..c5cde1bc
 +  const uint32_t elapsed = std::min<uint32_t>(millis() - cardStartedAt, 3600000);
 +  std::string error;
 +  if (!ANKI_STORE.recordReview(ease, elapsed, error)) {
++    applyUiOrientation(false);
 +    state = State::ERROR;
 +    message = error;
 +    restartOnDismiss = false;
@@ -12229,7 +12492,13 @@ index 00000000..c5cde1bc
 +    if (!loadCurrentCard()) return;
 +    state = State::QUESTION;
 +    cardStartedAt = millis();
++  } else if (ANKI_STORE.hasAnyRemainingCards()) {
++    applyUiOrientation(false);
++    state = State::MESSAGE;
++    message = tr(STR_ANKI_DECK_DONE);
++    restartOnDismiss = false;
 +  } else {
++    applyUiOrientation(false);
 +    state = State::MESSAGE;
 +    message = tr(STR_ANKI_OFFLINE_DONE);
 +    restartOnDismiss = false;
@@ -12259,20 +12528,12 @@ index 00000000..c5cde1bc
 +  requestUpdate();
 +}
 +
-+void AnkiActivity::handleQuestionPaging() {
-+  if (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
-+      mappedInput.wasPressed(MappedInputManager::Button::Left)) {
++void AnkiActivity::handleCardPaging() {
++  if (mappedInput.wasPressed(MappedInputManager::Button::PageBack) ||
++      mappedInput.wasPressed(MappedInputManager::Button::Up)) {
 +    previousPage();
-+  } else if (mappedInput.wasPressed(MappedInputManager::Button::Down) ||
-+             mappedInput.wasPressed(MappedInputManager::Button::Right)) {
-+    nextPage();
-+  }
-+}
-+
-+void AnkiActivity::handleAnswerPaging() {
-+  if (mappedInput.wasPressed(MappedInputManager::Button::Up)) {
-+    previousPage();
-+  } else if (mappedInput.wasPressed(MappedInputManager::Button::Down)) {
++  } else if (mappedInput.wasPressed(MappedInputManager::Button::PageForward) ||
++             mappedInput.wasPressed(MappedInputManager::Button::Down)) {
 +    nextPage();
 +  }
 +}
@@ -12301,6 +12562,7 @@ index 00000000..c5cde1bc
 +}
 +
 +void AnkiActivity::renderMenu() {
++  applyUiOrientation(false);
 +  renderer.clearScreen();
 +  const auto& metrics = UITheme::getInstance().getMetrics();
 +  const int pageWidth = renderer.getScreenWidth();
@@ -12310,19 +12572,64 @@ index 00000000..c5cde1bc
 +  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
 +  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
 +  GUI.drawList(
-+      renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(menuActions.size()), selectedIndex,
-+      [this](const int index) { return std::string(menuLabel(menuActions[index])); }, nullptr, nullptr,
++      renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(menuItems.size()), selectedIndex,
++      [this](const int index) {
++        const MenuItem& item = menuItems[index];
++        if (item.action == MenuAction::DECK) {
++          const AnkiDeckInfo info = ANKI_STORE.getDeckInfo(item.deckIndex);
++          // Prefer the real deck title; never fall back to the app name "Anki".
++          if (!info.name.empty() && info.name != "Anki") return info.name;
++          if (!info.id.empty() && info.id != "default" && info.id != "Anki") {
++            if (info.id.rfind("name:", 0) == 0 && info.id.size() > 5) return info.id.substr(5);
++            // Numeric Anki deck ids are better than the generic app title.
++            if (!(info.id.size() > 0 && info.id[0] >= '0' && info.id[0] <= '9')) return info.id;
++          }
++          if (!info.name.empty()) return info.name;
++          char fallback[28];
++          snprintf(fallback, sizeof(fallback), "%s %u", tr(STR_ANKI_LEARN),
++                   static_cast<unsigned int>(item.deckIndex + 1));
++          return std::string(fallback);
++        }
++        return std::string(staticMenuLabel(item.action));
++      },
++      // Subtitle under deck rows: progress for that stack.
++      [this](const int index) -> std::string {
++        const MenuItem& item = menuItems[index];
++        if (item.action != MenuAction::DECK) return {};
++        const AnkiDeckInfo info = ANKI_STORE.getDeckInfo(item.deckIndex);
++        const uint16_t total = info.total > 0 ? info.total : info.remaining;
++        if (total == 0) return tr(STR_ANKI_DECK_FINISHED);
++        if (info.remaining == 0) return tr(STR_ANKI_DECK_FINISHED);
++        const unsigned pct =
++            static_cast<unsigned>((static_cast<uint32_t>(total - info.remaining) * 100u) / total);
++        char buf[40];
++        snprintf(buf, sizeof(buf), tr(STR_ANKI_PROGRESS_FORMAT), static_cast<unsigned int>(info.remaining),
++                 static_cast<unsigned int>(total), pct);
++        return buf;
++      },
++      nullptr,
 +      [this](const int index) {
 +        char value[48] = {};
-+        if (menuActions[index] == MenuAction::LEARN) {
++        const MenuItem& item = menuItems[index];
++        if (item.action == MenuAction::LEARN) {
 +          snprintf(value, sizeof(value), tr(STR_ANKI_REMAINING_FORMAT),
 +                   static_cast<unsigned int>(ANKI_STORE.getRemainingCount()));
-+        } else if (menuActions[index] == MenuAction::UPLOAD) {
++        } else if (item.action == MenuAction::DECK) {
++          const AnkiDeckInfo info = ANKI_STORE.getDeckInfo(item.deckIndex);
++          snprintf(value, sizeof(value), tr(STR_ANKI_REMAINING_FORMAT),
++                   static_cast<unsigned int>(info.remaining));
++        } else if (item.action == MenuAction::UPLOAD) {
 +          snprintf(value, sizeof(value), "%u", static_cast<unsigned int>(ANKI_STORE.getReviewCount()));
 +        }
 +        return std::string(value);
 +      },
-+      true);
++      true,
++      // Dim finished decks so open stacks stand out.
++      [this](const int index) {
++        const MenuItem& item = menuItems[index];
++        if (item.action != MenuAction::DECK) return false;
++        return ANKI_STORE.getDeckInfo(item.deckIndex).remaining == 0;
++      });
 +
 +  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
 +  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -12330,7 +12637,8 @@ index 00000000..c5cde1bc
 +}
 +
 +size_t AnkiActivity::drawTextPage(const std::string& text, const size_t start, const int x, const int y,
-+                                  const int width, const int maxLines, const int lineHeight) {
++                                  const int width, const int maxLines, const int lineHeight, const int scale,
++                                  const bool bold) {
 +  size_t position = std::min(start, text.size());
 +  for (int lineNumber = 0; lineNumber < maxLines && position < text.size(); lineNumber++) {
 +    while (position < text.size() && (text[position] == ' ' || text[position] == '\t')) position++;
@@ -12350,7 +12658,7 @@ index 00000000..c5cde1bc
 +      const size_t next = nextUtf8Boundary(text, scan);
 +      if (text[scan] == ' ' || text[scan] == '\t') lastBreak = next;
 +      const std::string candidate = text.substr(lineStart, next - lineStart);
-+      if (renderer.getTextWidth(UI_12_FONT_ID, candidate.c_str()) > width) {
++      if (baseTextWidth(renderer, candidate.c_str(), bold) * scale > width) {
 +        if (lastBreak != std::string::npos && lastBreak > lineStart) {
 +          lineEnd = lastBreak;
 +          nextPosition = lastBreak;
@@ -12371,7 +12679,10 @@ index 00000000..c5cde1bc
 +    if (scan < text.size() && text[scan] == '\n' && nextPosition == scan) nextPosition++;
 +    std::string line = text.substr(lineStart, lineEnd - lineStart);
 +    while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.pop_back();
-+    renderer.drawText(UI_12_FONT_ID, x, y + lineNumber * lineHeight, line.c_str());
++    // Ascender offset so the first line is not clipped under the header.
++    const int baseline =
++        y + lineNumber * lineHeight + renderer.getFontAscenderSize(kCardFontId) * scale;
++    drawScaledText(renderer, x, baseline, line.c_str(), scale, bold);
 +    if (nextPosition <= position) nextPosition = nextUtf8Boundary(text, position);
 +    position = nextPosition;
 +  }
@@ -12379,42 +12690,99 @@ index 00000000..c5cde1bc
 +}
 +
 +void AnkiActivity::renderCard(const bool answer) {
++  applyUiOrientation(true);
 +  renderer.clearScreen();
++
 +  const auto& metrics = UITheme::getInstance().getMetrics();
++  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
 +  const int pageWidth = renderer.getScreenWidth();
 +  const int pageHeight = renderer.getScreenHeight();
-+  const char* side = answer ? tr(STR_ANKI_ANSWER) : tr(STR_ANKI_QUESTION);
-+
-+  char header[96];
-+  snprintf(header, sizeof(header), "%s · %u", side, static_cast<unsigned int>(ANKI_STORE.getRemainingCount()));
-+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, header);
-+
-+  const int x = metrics.contentSidePadding;
-+  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-+  const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID) + 3;
-+  const int footerHeight = metrics.buttonHintsHeight + renderer.getLineHeight(SMALL_FONT_ID) + metrics.verticalSpacing;
-+  const int availableHeight = pageHeight - contentTop - footerHeight;
-+  const int maxLines = std::max(1, availableHeight / lineHeight);
 +  const std::string& text = answer ? currentCard.back : currentCard.front;
-+  nextPageStart = drawTextPage(text, pageStart, x, contentTop, pageWidth - 2 * x, maxLines, lineHeight);
++  const int scale = std::max<int>(1, std::min<int>(3, ANKI_STORE.getFontScale()));
++
++  // Status strip:
++  //   progress bar
++  //   "12/50 · 76%"                    <deck name>
++  //   ────────────────────────────────────
++  const AnkiDeckInfo deckInfo = ANKI_STORE.getDeckInfo(ANKI_STORE.getCurrentDeckIndex());
++  const uint16_t remaining = deckInfo.remaining;
++  const uint16_t total = deckInfo.total > 0 ? deckInfo.total : remaining;
++  const unsigned percentDone =
++      total == 0 ? 100u
++                 : static_cast<unsigned>((static_cast<uint32_t>(total - remaining) * 100u) / total);
++
++  const int padX = metrics.contentSidePadding;
++  const int statusInnerW = std::max(1, safe.width - 2 * padX);
++  const int statsFont = UI_10_FONT_ID;
++  const int statsLineH = renderer.getLineHeight(statsFont);
++  constexpr int kBarH = 8;
++  const int headerY = safe.y + 4;
++
++  const int barY = headerY;
++  const int barX = safe.x + padX;
++  const int barW = statusInnerW;
++  renderer.drawRect(barX, barY, barW, kBarH);
++  if (total > 0 && percentDone > 0) {
++    const int fillW = std::max(1, static_cast<int>((static_cast<int64_t>(barW - 2) * percentDone) / 100));
++    renderer.fillRect(barX + 1, barY + 1, std::min(fillW, barW - 2), kBarH - 2, true);
++  }
++
++  const int statsY = barY + kBarH + 2;
++  char stats[40];
++  snprintf(stats, sizeof(stats), tr(STR_ANKI_PROGRESS_FORMAT), static_cast<unsigned int>(remaining),
++           static_cast<unsigned int>(total), percentDone);
++  const int statsW = renderer.getTextWidth(statsFont, stats, EpdFontFamily::REGULAR);
++  renderer.drawText(statsFont, safe.x + padX, statsY, stats, true, EpdFontFamily::REGULAR);
++
++  // Right side: deck this card belongs to (not Frage/Antwort).
++  if (!deckInfo.name.empty()) {
++    constexpr int kGap = 10;
++    const int nameMaxW = std::max(0, statusInnerW - statsW - kGap);
++    if (nameMaxW > 12) {
++      const std::string nameFit =
++          renderer.truncatedText(statsFont, deckInfo.name.c_str(), nameMaxW, EpdFontFamily::BOLD);
++      const int nameW = renderer.getTextWidth(statsFont, nameFit.c_str(), EpdFontFamily::BOLD);
++      renderer.drawText(statsFont, safe.x + padX + statusInnerW - nameW, statsY, nameFit.c_str(), true,
++                        EpdFontFamily::BOLD);
++    }
++  }
++
++  const int separatorY = statsY + statsLineH + 4;
++  renderer.fillRect(safe.x + padX, separatorY, statusInnerW, 1, true);
++
++  const int x = safe.x + padX + 4;
++  const int contentTop = separatorY + 8;
++  const int lineHeight = renderer.getLineHeight(kCardFontId) * scale + (scale > 1 ? 4 : 6);
++  const int footerHeight = metrics.buttonHintsHeight + renderer.getLineHeight(SMALL_FONT_ID) + 8;
++  // Landscape: button hints sit on the side; safe area already accounts for that.
++  const int contentBottom = safe.y + safe.height - (ANKI_STORE.isLandscapeCards() ? 18 : footerHeight);
++  const int availableHeight = std::max(1, contentBottom - contentTop);
++  const int maxLines = std::max(1, availableHeight / lineHeight);
++  const int contentWidth = safe.width - 2 * (metrics.contentSidePadding + 4);
++
++  nextPageStart = drawTextPage(text, pageStart, x, contentTop, contentWidth, maxLines, lineHeight, scale, false);
 +
 +  std::string paging;
 +  if (!pageHistory.empty()) paging += "< ";
 +  paging += tr(STR_ANKI_SIDE_PAGES);
 +  if (nextPageStart < text.size()) paging += " >";
-+  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - metrics.buttonHintsHeight - lineHeight, paging.c_str());
++  const int pagingY = ANKI_STORE.isLandscapeCards()
++                          ? safe.y + safe.height - renderer.getLineHeight(SMALL_FONT_ID) - 2
++                          : pageHeight - metrics.buttonHintsHeight - renderer.getLineHeight(SMALL_FONT_ID) - 4;
++  renderer.drawCenteredText(SMALL_FONT_ID, pagingY, paging.c_str());
 +
-+  MappedInputManager::Labels labels;
 +  if (answer) {
-+    labels = mappedInput.mapLabels(tr(STR_ANKI_AGAIN), tr(STR_ANKI_GOOD), tr(STR_ANKI_HARD), tr(STR_ANKI_EASY));
++    drawGradeButtonHints(renderer, ANKI_STORE.isLeftHanded());
 +  } else {
-+    labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_ANKI_ANSWER), "", "");
++    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_ANKI_ANSWER), "", "");
++    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 +  }
-+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
++  (void)pageWidth;
 +  renderer.displayBuffer();
 +}
 +
 +void AnkiActivity::renderMessage(const bool error) {
++  applyUiOrientation(false);
 +  renderer.clearScreen();
 +  const auto& metrics = UITheme::getInstance().getMetrics();
 +  const int pageWidth = renderer.getScreenWidth();
@@ -12425,7 +12793,7 @@ index 00000000..c5cde1bc
 +  const int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 3;
 +  const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID) + 4;
 +  const int maxLines = std::max(1, (pageHeight - y - metrics.buttonHintsHeight - metrics.verticalSpacing) / lineHeight);
-+  drawTextPage(message, 0, x, y, pageWidth - 2 * x, maxLines, lineHeight);
++  drawTextPage(message, 0, x, y, pageWidth - 2 * x, maxLines, lineHeight, 1, false);
 +
 +  if (state != State::WORKING) {
 +    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_DONE), "", "");
@@ -12435,10 +12803,10 @@ index 00000000..c5cde1bc
 +}
 diff --git a/src/activities/anki/AnkiActivity.h b/src/activities/anki/AnkiActivity.h
 new file mode 100644
-index 00000000..7c5db51d
+index 0000000..de5209c
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.h
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,71 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -12452,7 +12820,7 @@ index 00000000..7c5db51d
 +
 +class AnkiActivity final : public Activity {
 + public:
-+  enum class MenuAction { LEARN, DOWNLOAD, UPLOAD, CONFIGURE };
++  enum class MenuAction { LEARN, DECK, DOWNLOAD, UPLOAD, CONFIGURE };
 +
 +  explicit AnkiActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
 +      : Activity("Anki", renderer, mappedInput) {}
@@ -12467,10 +12835,15 @@ index 00000000..7c5db51d
 +  enum class State { MENU, WORKING, QUESTION, ANSWER, MESSAGE, ERROR };
 +  enum class NetworkAction { NONE, PULL, PUSH };
 +
++  struct MenuItem {
++    MenuAction action = MenuAction::LEARN;
++    uint16_t deckIndex = 0;
++  };
++
 +  State state = State::MENU;
 +  NetworkAction networkAction = NetworkAction::NONE;
 +  ButtonNavigator buttonNavigator;
-+  std::vector<MenuAction> menuActions;
++  std::vector<MenuItem> menuItems;
 +  int selectedIndex = 0;
 +  AnkiCard currentCard;
 +  std::string message;
@@ -12489,26 +12862,28 @@ index 00000000..7c5db51d
 +  void onWifiSelectionComplete(bool success);
 +  void performNetworkAction();
 +  void startReview();
++  void startReviewForDeck(uint16_t deckIndex);
 +  void showAnswer();
 +  void grade(uint8_t ease);
 +  bool loadCurrentCard();
 +  void resetPaging();
-+  void handleQuestionPaging();
-+  void handleAnswerPaging();
++  void handleCardPaging();
 +  void nextPage();
 +  void previousPage();
++  void applyUiOrientation(bool forCard);
 +
 +  void renderMenu();
 +  void renderCard(bool answer);
 +  void renderMessage(bool error);
-+  size_t drawTextPage(const std::string& text, size_t start, int x, int y, int width, int maxLines, int lineHeight);
++  size_t drawTextPage(const std::string& text, size_t start, int x, int y, int width, int maxLines, int lineHeight,
++                      int scale, bool bold);
 +};
 diff --git a/src/activities/anki/AnkiSettingsActivity.cpp b/src/activities/anki/AnkiSettingsActivity.cpp
 new file mode 100644
-index 00000000..6f7334f0
+index 0000000..839cb2f
 --- /dev/null
 +++ b/src/activities/anki/AnkiSettingsActivity.cpp
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,170 @@
 +#include "AnkiSettingsActivity.h"
 +
 +#include <GfxRenderer.h>
@@ -12523,11 +12898,22 @@ index 00000000..6f7334f0
 +#include "fontIds.h"
 +
 +namespace {
-+const StrId MENU_NAMES[3] = {
-+    StrId::STR_ANKI_SERVER_URL,
-+    StrId::STR_ANKI_API_TOKEN,
-+    StrId::STR_ANKI_CLEAR_LOCAL,
++const StrId MENU_NAMES[6] = {
++    StrId::STR_ANKI_SERVER_URL,   StrId::STR_ANKI_API_TOKEN,     StrId::STR_ANKI_HANDEDNESS,
++    StrId::STR_ANKI_FONT_SIZE,    StrId::STR_ANKI_ORIENTATION,   StrId::STR_ANKI_CLEAR_LOCAL,
 +};
++
++const char* fontScaleLabel(const uint8_t scale) {
++  switch (scale) {
++    case 1:
++      return tr(STR_ANKI_FONT_SMALL);
++    case 3:
++      return tr(STR_ANKI_FONT_LARGE);
++    case 2:
++    default:
++      return tr(STR_ANKI_FONT_MEDIUM);
++  }
++}
 +}  // namespace
 +
 +void AnkiSettingsActivity::onEnter() {
@@ -12595,6 +12981,24 @@ index 00000000..6f7334f0
 +    return;
 +  }
 +
++  if (selectedIndex == 2) {
++    ANKI_STORE.setLeftHanded(!ANKI_STORE.isLeftHanded());
++    saveConfig();
++    return;
++  }
++
++  if (selectedIndex == 3) {
++    ANKI_STORE.cycleFontScale();
++    saveConfig();
++    return;
++  }
++
++  if (selectedIndex == 4) {
++    ANKI_STORE.cycleCardOrientation();
++    saveConfig();
++    return;
++  }
++
 +  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_ANKI_CLEAR_LOCAL),
 +                                                                tr(STR_ANKI_CLEAR_CONFIRM)),
 +                         [this](const ActivityResult& result) {
@@ -12628,6 +13032,16 @@ index 00000000..6f7334f0
 +        if (index == 1) {
 +          return ANKI_STORE.getApiToken().empty() ? std::string(tr(STR_NOT_SET)) : std::string("******");
 +        }
++        if (index == 2) {
++          return std::string(ANKI_STORE.isLeftHanded() ? tr(STR_ANKI_LEFT_HANDED) : tr(STR_ANKI_RIGHT_HANDED));
++        }
++        if (index == 3) {
++          return std::string(fontScaleLabel(ANKI_STORE.getFontScale()));
++        }
++        if (index == 4) {
++          return std::string(ANKI_STORE.isLandscapeCards() ? tr(STR_ANKI_ORIENT_LANDSCAPE)
++                                                           : tr(STR_ANKI_ORIENT_PORTRAIT));
++        }
 +        return std::string("");
 +      },
 +      true);
@@ -12642,7 +13056,7 @@ index 00000000..6f7334f0
 +}
 diff --git a/src/activities/anki/AnkiSettingsActivity.h b/src/activities/anki/AnkiSettingsActivity.h
 new file mode 100644
-index 00000000..0c5a2861
+index 0000000..a1be8c3
 --- /dev/null
 +++ b/src/activities/anki/AnkiSettingsActivity.h
 @@ -0,0 +1,25 @@
@@ -12663,7 +13077,7 @@ index 00000000..0c5a2861
 +  void render(RenderLock&&) override;
 +
 + private:
-+  static constexpr int MENU_ITEMS = 3;
++  static constexpr int MENU_ITEMS = 6;
 +  ButtonNavigator buttonNavigator;
 +  int selectedIndex = 0;
 +  std::string statusMessage;
@@ -12672,7 +13086,7 @@ index 00000000..0c5a2861
 +  void saveConfig();
 +};
 diff --git a/src/activities/home/HomeActivity.cpp b/src/activities/home/HomeActivity.cpp
-index 28743264..1d09cc6e 100644
+index 2874326..aeeca9a 100644
 --- a/src/activities/home/HomeActivity.cpp
 +++ b/src/activities/home/HomeActivity.cpp
 @@ -21,7 +21,7 @@
@@ -12703,7 +13117,7 @@ index 28743264..1d09cc6e 100644
 -  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings};
 +  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_ANKI),
 +                                        tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
-+  std::vector<UIIcon> menuIcons = {Folder, Recent, Book, Transfer, Settings};
++  std::vector<UIIcon> menuIcons = {Folder, Recent, Anki, Transfer, Settings};
  
    if (hasOpdsServers) {
      menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
@@ -12714,7 +13128,7 @@ index 28743264..1d09cc6e 100644
 +
 +void HomeActivity::onAnkiOpen() { activityManager.goToAnki(); }
 diff --git a/src/activities/home/HomeActivity.h b/src/activities/home/HomeActivity.h
-index 6d170cdd..6c055513 100644
+index 6d170cd..6c05551 100644
 --- a/src/activities/home/HomeActivity.h
 +++ b/src/activities/home/HomeActivity.h
 @@ -39,6 +39,8 @@ class HomeActivity final : public Activity {
@@ -12744,10 +13158,10 @@ index 6d170cdd..6c055513 100644
    bool storeCoverBuffer();    // Store frame buffer for cover image
 diff --git a/src/anki/AnkiStore.cpp b/src/anki/AnkiStore.cpp
 new file mode 100644
-index 00000000..a9d90b07
+index 0000000..8c546da
 --- /dev/null
 +++ b/src/anki/AnkiStore.cpp
-@@ -0,0 +1,421 @@
+@@ -0,0 +1,716 @@
 +#include "AnkiStore.h"
 +
 +#include <ArduinoJson.h>
@@ -12759,6 +13173,8 @@ index 00000000..a9d90b07
 +#include <cctype>
 +#include <cstdlib>
 +#include <limits>
++
++const std::string AnkiStore::EMPTY_DECK_NAME;
 +
 +namespace {
 +bool readLine(HalFile& file, std::string& line, const size_t maxBytes, bool& tooLong) {
@@ -12807,6 +13223,62 @@ index 00000000..a9d90b07
 +  }
 +  return false;
 +}
++
++constexpr size_t kMaxDeckIdChars = 32;
++constexpr size_t kMaxDeckNameChars = 64;
++constexpr uint16_t kMaxDecks = 64;
++
++std::string clipText(std::string value, const size_t maxChars) {
++  if (value.size() <= maxChars) return value;
++  value.resize(maxChars);
++  return value;
++}
++
++// Robust JSON text extraction — ArduinoJson string storage can fail is<const char*>()
++// for some values while still converting via as<std::string>().
++std::string jsonText(const JsonVariantConst& value) {
++  if (value.isNull()) return {};
++  if (value.is<const char*>()) {
++    const char* text = value.as<const char*>();
++    return text ? std::string(text) : std::string();
++  }
++  if (value.is<std::string>()) return value.as<std::string>();
++  if (value.is<long long>()) return std::to_string(value.as<long long>());
++  if (value.is<unsigned long long>()) return std::to_string(value.as<unsigned long long>());
++  if (value.is<int>()) return std::to_string(value.as<int>());
++  if (value.is<unsigned int>()) return std::to_string(value.as<unsigned int>());
++  return {};
++}
++
++bool isPlaceholderDeckName(const std::string& name, const std::string& id) {
++  if (name.empty()) return true;
++  if (name == "Anki") return true;
++  if (!id.empty() && name == id) return true;
++  return false;
++}
++
++std::string deckKey(const JsonVariantConst& idValue, const JsonVariantConst& nameValue) {
++  const std::string idText = clipText(jsonText(idValue), kMaxDeckIdChars);
++  if (!idText.empty()) return idText;
++
++  const std::string nameText = clipText(jsonText(nameValue), kMaxDeckNameChars);
++  if (!nameText.empty()) return std::string("name:") + nameText;
++  return "default";
++}
++
++std::string deckDisplayName(const JsonVariantConst& nameValue, const std::string& fallbackId) {
++  const std::string text = clipText(jsonText(nameValue), kMaxDeckNameChars);
++  if (!text.empty() && !isPlaceholderDeckName(text, fallbackId)) return text;
++
++  if (!fallbackId.empty() && fallbackId != "default") {
++    // name:… keys are synthetic ids when the server omitted deck_id.
++    if (fallbackId.rfind("name:", 0) == 0) return clipText(fallbackId.substr(5), kMaxDeckNameChars);
++    // Prefer a later real name over showing a raw numeric id when we only have a placeholder.
++    if (!text.empty()) return text;
++    return clipText(fallbackId, kMaxDeckNameChars);
++  }
++  return text.empty() ? std::string("Anki") : text;
++}
 +}  // namespace
 +
 +AnkiStore& AnkiStore::getInstance() {
@@ -12823,6 +13295,9 @@ index 00000000..a9d90b07
 +bool AnkiStore::loadConfiguration(std::string& error) {
 +  serverUrl.clear();
 +  apiToken.clear();
++  leftHanded = false;
++  fontScale = 2;
++  cardOrientation = 0;
 +  if (!Storage.exists(CONFIG_PATH)) return true;
 +
 +  const String json = Storage.readFile(CONFIG_PATH);
@@ -12842,6 +13317,11 @@ index 00000000..a9d90b07
 +  bool tokenOk = false;
 +  apiToken = obfuscation::deobfuscateFromBase64(doc["api_token_obf"] | "", &tokenOk);
 +  if (!tokenOk) apiToken = doc["api_token"] | std::string("");
++  leftHanded = doc["left_handed"] | false;
++  const int scale = doc["font_scale"] | 2;
++  fontScale = static_cast<uint8_t>(scale < 1 ? 1 : (scale > 3 ? 3 : scale));
++  const int orient = doc["card_orientation"] | 0;
++  cardOrientation = orient == 0 ? 0 : 1;
 +  setServerUrl(serverUrl);
 +  setApiToken(apiToken);
 +  return true;
@@ -12851,6 +13331,9 @@ index 00000000..a9d90b07
 +  JsonDocument doc;
 +  doc["server_url"] = serverUrl;
 +  doc["api_token_obf"] = obfuscation::obfuscateToBase64(apiToken);
++  doc["left_handed"] = leftHanded;
++  doc["font_scale"] = fontScale;
++  doc["card_orientation"] = cardOrientation;
 +
 +  String json;
 +  serializeJson(doc, json);
@@ -12871,12 +13354,87 @@ index 00000000..a9d90b07
 +
 +void AnkiStore::setApiToken(std::string value) { apiToken = trim(std::move(value)); }
 +
++void AnkiStore::setLeftHanded(const bool value) { leftHanded = value; }
++
++void AnkiStore::setFontScale(const uint8_t scale) {
++  fontScale = scale < 1 ? 1 : (scale > 3 ? 3 : scale);
++}
++
++void AnkiStore::cycleFontScale() {
++  fontScale = fontScale >= 3 ? 1 : static_cast<uint8_t>(fontScale + 1);
++}
++
++void AnkiStore::setCardOrientation(const uint8_t orientation) {
++  cardOrientation = orientation == 0 ? 0 : 1;
++}
++
++void AnkiStore::cycleCardOrientation() { cardOrientation = cardOrientation == 0 ? 1 : 0; }
++
 +void AnkiStore::resetSessionState() {
 +  batchId.clear();
 +  cardCount = 0;
-+  cursor = 0;
 +  reviewCount = 0;
-+  queue.clear();
++  currentDeck = 0;
++  decks.clear();
++}
++
++AnkiStore::DeckSession* AnkiStore::currentDeckSession() {
++  if (currentDeck >= decks.size()) return nullptr;
++  return &decks[currentDeck];
++}
++
++const AnkiStore::DeckSession* AnkiStore::currentDeckSession() const {
++  if (currentDeck >= decks.size()) return nullptr;
++  return &decks[currentDeck];
++}
++
++bool AnkiStore::hasRemainingCards() const {
++  const DeckSession* deck = currentDeckSession();
++  return deck != nullptr && deck->remaining() > 0;
++}
++
++bool AnkiStore::hasAnyRemainingCards() const {
++  for (const DeckSession& deck : decks) {
++    if (deck.remaining() > 0) return true;
++  }
++  return false;
++}
++
++uint16_t AnkiStore::getRemainingCount() const {
++  const DeckSession* deck = currentDeckSession();
++  return deck ? deck->remaining() : 0;
++}
++
++uint16_t AnkiStore::getAnyRemainingCount() const {
++  uint32_t total = 0;
++  for (const DeckSession& deck : decks) total += deck.remaining();
++  return static_cast<uint16_t>(std::min<uint32_t>(total, 65535));
++}
++
++bool AnkiStore::setCurrentDeck(const uint16_t deckIndex) {
++  if (deckIndex >= decks.size()) return false;
++  if (currentDeck == deckIndex) return true;
++  currentDeck = deckIndex;
++  std::string error;
++  return saveSession(error);
++}
++
++AnkiDeckInfo AnkiStore::getDeckInfo(const uint16_t deckIndex) const {
++  AnkiDeckInfo info;
++  if (deckIndex >= decks.size()) return info;
++  const DeckSession& deck = decks[deckIndex];
++  info.id = deck.id;
++  info.name = deck.name;
++  info.remaining = deck.remaining();
++  info.total = static_cast<uint16_t>(deck.queue.size());
++  // total here is queue size which may include requeued learning cards;
++  // remaining is what the UI needs.
++  return info;
++}
++
++const std::string& AnkiStore::getCurrentDeckName() const {
++  const DeckSession* deck = currentDeckSession();
++  return deck ? deck->name : EMPTY_DECK_NAME;
 +}
 +
 +bool AnkiStore::loadSession(std::string& error) {
@@ -12898,8 +13456,8 @@ index 00000000..a9d90b07
 +
 +  batchId = doc["batch_id"] | std::string("");
 +  cardCount = doc["card_count"] | static_cast<uint16_t>(0);
-+  cursor = doc["cursor"] | static_cast<uint16_t>(0);
 +  reviewCount = doc["review_count"] | static_cast<uint16_t>(0);
++  currentDeck = doc["current_deck"] | static_cast<uint16_t>(0);
 +
 +  if (batchId.empty() || cardCount > MAX_CARDS || !Storage.exists(CARDS_PATH) || !Storage.exists(INDEX_PATH)) {
 +    error = "Local Anki batch is incomplete";
@@ -12907,28 +13465,85 @@ index 00000000..a9d90b07
 +    return false;
 +  }
 +
-+  const JsonArrayConst savedQueue = doc["queue"];
-+  if (savedQueue.isNull() || savedQueue.size() > std::numeric_limits<uint16_t>::max()) {
-+    error = "Local Anki queue is invalid";
-+    resetSessionState();
-+    return false;
-+  }
-+
-+  queue.reserve(savedQueue.size());
-+  for (const JsonVariantConst value : savedQueue) {
-+    const uint16_t cardIndex = value.as<uint16_t>();
-+    if (cardIndex >= cardCount) {
-+      error = "Local Anki queue contains an invalid card";
++  const JsonArrayConst savedDecks = doc["decks"];
++  if (!savedDecks.isNull()) {
++    if (savedDecks.size() > MAX_DECKS) {
++      error = "Local Anki deck list is invalid";
 +      resetSessionState();
 +      return false;
 +    }
-+    queue.push_back(cardIndex);
++
++    decks.reserve(savedDecks.size());
++    for (const JsonVariantConst deckValue : savedDecks) {
++      DeckSession deck;
++      deck.id = clipText(jsonText(deckValue["id"]), MAX_DECK_ID_CHARS);
++      if (deck.id.empty()) deck.id = "default";
++      deck.name = clipText(jsonText(deckValue["name"]), MAX_DECK_NAME_CHARS);
++      if (deck.name.empty()) {
++        deck.name = deck.id.rfind("name:", 0) == 0 ? deck.id.substr(5) : std::string("Anki");
++      }
++      deck.cursor = deckValue["cursor"] | static_cast<uint16_t>(0);
++
++      const JsonArrayConst savedQueue = deckValue["queue"];
++      if (savedQueue.isNull() || savedQueue.size() > std::numeric_limits<uint16_t>::max()) {
++        error = "Local Anki queue is invalid";
++        resetSessionState();
++        return false;
++      }
++      deck.queue.reserve(savedQueue.size());
++      for (const JsonVariantConst value : savedQueue) {
++        const uint16_t cardIndex = value.as<uint16_t>();
++        if (cardIndex >= cardCount) {
++          error = "Local Anki queue contains an invalid card";
++          resetSessionState();
++          return false;
++        }
++        deck.queue.push_back(cardIndex);
++      }
++      if (deck.cursor > deck.queue.size()) {
++        error = "Local Anki queue position is invalid";
++        resetSessionState();
++        return false;
++      }
++      decks.push_back(std::move(deck));
++    }
++  } else {
++    // Legacy single-queue state from older firmware builds.
++    DeckSession deck;
++    deck.id = "default";
++    deck.name = "Anki";
++    deck.cursor = doc["cursor"] | static_cast<uint16_t>(0);
++    const JsonArrayConst savedQueue = doc["queue"];
++    if (savedQueue.isNull() || savedQueue.size() > std::numeric_limits<uint16_t>::max()) {
++      error = "Local Anki queue is invalid";
++      resetSessionState();
++      return false;
++    }
++    deck.queue.reserve(savedQueue.size());
++    for (const JsonVariantConst value : savedQueue) {
++      const uint16_t cardIndex = value.as<uint16_t>();
++      if (cardIndex >= cardCount) {
++        error = "Local Anki queue contains an invalid card";
++        resetSessionState();
++        return false;
++      }
++      deck.queue.push_back(cardIndex);
++    }
++    if (deck.cursor > deck.queue.size()) {
++      error = "Local Anki queue position is invalid";
++      resetSessionState();
++      return false;
++    }
++    decks.push_back(std::move(deck));
++    currentDeck = 0;
 +  }
-+  if (cursor > queue.size()) {
-+    error = "Local Anki queue position is invalid";
++
++  if (decks.empty()) {
++    error = "Local Anki batch has no decks";
 +    resetSessionState();
 +    return false;
 +  }
++  if (currentDeck >= decks.size()) currentDeck = 0;
 +  return true;
 +}
 +
@@ -12936,10 +13551,17 @@ index 00000000..a9d90b07
 +  JsonDocument doc;
 +  doc["batch_id"] = batchId;
 +  doc["card_count"] = cardCount;
-+  doc["cursor"] = cursor;
 +  doc["review_count"] = reviewCount;
-+  JsonArray savedQueue = doc["queue"].to<JsonArray>();
-+  for (const uint16_t cardIndex : queue) savedQueue.add(cardIndex);
++  doc["current_deck"] = currentDeck;
++  JsonArray savedDecks = doc["decks"].to<JsonArray>();
++  for (const DeckSession& deck : decks) {
++    JsonObject deckObject = savedDecks.add<JsonObject>();
++    deckObject["id"] = deck.id;
++    deckObject["name"] = deck.name;
++    deckObject["cursor"] = deck.cursor;
++    JsonArray savedQueue = deckObject["queue"].to<JsonArray>();
++    for (const uint16_t cardIndex : deck.queue) savedQueue.add(cardIndex);
++  }
 +
 +  String json;
 +  serializeJson(doc, json);
@@ -12985,6 +13607,39 @@ index 00000000..a9d90b07
 +    return false;
 +  }
 +
++  std::vector<DeckSession> builtDecks;
++  builtDecks.reserve(8);
++  auto findOrCreateDeck = [&](const std::string& id, const std::string& name) -> DeckSession* {
++    for (DeckSession& deck : builtDecks) {
++      if (deck.id != id) continue;
++      // First card/meta may only have a placeholder; upgrade when a real name arrives.
++      if (isPlaceholderDeckName(deck.name, deck.id) && !isPlaceholderDeckName(name, id)) {
++        deck.name = name;
++      }
++      return &deck;
++    }
++    if (builtDecks.size() >= kMaxDecks) return nullptr;
++    DeckSession deck;
++    deck.id = id;
++    deck.name = name.empty() ? std::string("Anki") : name;
++    builtDecks.push_back(std::move(deck));
++    return &builtDecks.back();
++  };
++
++  // Prefer the compact meta deck list (id + display name) — always present in protocol v2
++  // and much smaller than per-card lines, so names survive even when card JSON is tight on RAM.
++  const JsonArrayConst metaDecks = meta["decks"];
++  if (!metaDecks.isNull()) {
++    for (const JsonVariantConst deckValue : metaDecks) {
++      const std::string id = deckKey(deckValue["id"], deckValue["name"]);
++      const std::string name = deckDisplayName(deckValue["name"], id);
++      if (!findOrCreateDeck(id, name)) {
++        error = "Anki batch contains too many decks";
++        return false;
++      }
++    }
++  }
++
 +  uint16_t actualCount = 0;
 +  bool sawEnd = false;
 +  while (cards.available()) {
@@ -13019,10 +13674,20 @@ index 00000000..a9d90b07
 +    }
 +
 +    uint64_t id = 0;
-+    if (!parseCardId(doc["id"], id) || !doc["front"].is<const char*>() || !doc["back"].is<const char*>()) {
++    if (!parseCardId(doc["id"], id)) {
 +      error = "Anki batch contains an invalid card";
 +      return false;
 +    }
++    // front/back may be empty strings (media-only or odd templates); UI shows a placeholder.
++
++    const std::string cardDeckId = deckKey(doc["deck_id"], doc["deck_name"]);
++    const std::string cardDeckName = deckDisplayName(doc["deck_name"], cardDeckId);
++    DeckSession* deck = findOrCreateDeck(cardDeckId, cardDeckName);
++    if (!deck) {
++      error = "Anki batch contains too many decks";
++      return false;
++    }
++    deck->queue.push_back(actualCount);
 +
 +    const uint32_t offset = static_cast<uint32_t>(offsetValue);
 +    if (index.write(&offset, sizeof(offset)) != sizeof(offset)) {
@@ -13039,6 +13704,23 @@ index 00000000..a9d90b07
 +    error = "Anki batch ended unexpectedly";
 +    return false;
 +  }
++  if (builtDecks.empty() && actualCount > 0) {
++    error = "Anki batch has cards without decks";
++    return false;
++  }
++  if (actualCount == 0) {
++    // Empty successful pull still clears any previous local session.
++    Storage.remove(CARDS_PATH);
++    Storage.remove(INDEX_PATH);
++    Storage.remove(REVIEWS_PATH);
++    Storage.remove(STATE_PATH);
++    Storage.remove(PULL_TEMP_PATH);
++    Storage.remove(INDEX_TEMP_PATH);
++    resetSessionState();
++    batchId = newBatchId;
++    error.clear();
++    return true;
++  }
 +
 +  Storage.remove(CARDS_PATH);
 +  Storage.remove(INDEX_PATH);
@@ -13051,11 +13733,18 @@ index 00000000..a9d90b07
 +
 +  batchId = newBatchId;
 +  cardCount = actualCount;
-+  cursor = 0;
 +  reviewCount = 0;
-+  queue.clear();
-+  queue.reserve(cardCount);
-+  for (uint16_t indexValue = 0; indexValue < cardCount; indexValue++) queue.push_back(indexValue);
++  currentDeck = 0;
++  decks = std::move(builtDecks);
++  for (DeckSession& deck : decks) deck.cursor = 0;
++
++  // Prefer the first deck that still has cards.
++  for (uint16_t i = 0; i < decks.size(); i++) {
++    if (decks[i].remaining() > 0) {
++      currentDeck = i;
++      break;
++    }
++  }
 +  return saveSession(error);
 +}
 +
@@ -13095,15 +13784,28 @@ index 00000000..a9d90b07
 +  JsonDocument doc;
 +  const DeserializationError parseError = deserializeJson(doc, line);
 +  uint64_t id = 0;
-+  if (parseError || (doc["type"] | std::string("")) != "card" || !parseCardId(doc["id"], id) ||
-+      !doc["front"].is<const char*>() || !doc["back"].is<const char*>()) {
++  if (parseError || (doc["type"] | std::string("")) != "card" || !parseCardId(doc["id"], id)) {
 +    error = "Local Anki card contains invalid data";
 +    return false;
 +  }
 +
 +  card.id = id;
-+  card.front = doc["front"].as<std::string>();
-+  card.back = doc["back"].as<std::string>();
++  card.front = doc["front"].is<const char*>() ? doc["front"].as<std::string>() : std::string("");
++  card.back = doc["back"].is<const char*>() ? doc["back"].as<std::string>() : std::string("");
++  // Keep whitespace-only as empty so the UI can show a clear placeholder.
++  auto stripSides = [](std::string& value) {
++    while (!value.empty() && (value.back() == ' ' || value.back() == '\t' || value.back() == '\n' || value.back() == '\r')) {
++      value.pop_back();
++    }
++    size_t start = 0;
++    while (start < value.size() &&
++           (value[start] == ' ' || value[start] == '\t' || value[start] == '\n' || value[start] == '\r')) {
++      start++;
++    }
++    if (start > 0) value.erase(0, start);
++  };
++  stripSides(card.front);
++  stripSides(card.back);
 +  card.isLearning = doc["is_learning"] | false;
 +  error.clear();
 +  return true;
@@ -13114,12 +13816,19 @@ index 00000000..a9d90b07
 +    error = "No Anki cards remain";
 +    return false;
 +  }
-+  return loadCardByIndex(queue[cursor], card, error);
++  const DeckSession* deck = currentDeckSession();
++  return loadCardByIndex(deck->queue[deck->cursor], card, error);
 +}
 +
 +bool AnkiStore::recordReview(const uint8_t ease, const uint32_t durationMs, std::string& error) {
 +  if (ease < 1 || ease > 4 || !hasRemainingCards()) {
 +    error = "Invalid Anki review";
++    return false;
++  }
++
++  DeckSession* deck = currentDeckSession();
++  if (!deck) {
++    error = "Invalid Anki deck";
 +    return false;
 +  }
 +
@@ -13143,14 +13852,14 @@ index 00000000..a9d90b07
 +  reviews.flush();
 +  reviews.close();
 +
-+  const uint16_t reviewedCardIndex = queue[cursor];
-+  cursor++;
++  const uint16_t reviewedCardIndex = deck->queue[deck->cursor];
++  deck->cursor++;
 +  reviewCount++;
 +
 +  if (ease == 1 || (ease == 2 && card.isLearning)) {
 +    const size_t gap = ease == 1 ? 5 : 10;
-+    const size_t insertAt = std::min(queue.size(), static_cast<size_t>(cursor) + gap);
-+    queue.insert(queue.begin() + insertAt, reviewedCardIndex);
++    const size_t insertAt = std::min(deck->queue.size(), static_cast<size_t>(deck->cursor) + gap);
++    deck->queue.insert(deck->queue.begin() + insertAt, reviewedCardIndex);
 +  }
 +
 +  return saveSession(error);
@@ -13171,10 +13880,10 @@ index 00000000..a9d90b07
 +}
 diff --git a/src/anki/AnkiStore.h b/src/anki/AnkiStore.h
 new file mode 100644
-index 00000000..cf840338
+index 0000000..ce98079
 --- /dev/null
 +++ b/src/anki/AnkiStore.h
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,119 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -13186,6 +13895,13 @@ index 00000000..cf840338
 +  std::string front;
 +  std::string back;
 +  bool isLearning = false;
++};
++
++struct AnkiDeckInfo {
++  std::string id;
++  std::string name;
++  uint16_t remaining = 0;
++  uint16_t total = 0;
 +};
 +
 +class AnkiStore {
@@ -13205,6 +13921,19 @@ index 00000000..cf840338
 +
 +  void setServerUrl(std::string value);
 +  void setApiToken(std::string value);
++  bool isLeftHanded() const { return leftHanded; }
++  void setLeftHanded(bool value);
++
++  // 1=small, 2=medium (default), 3=large — integer pixel scale of UI_12
++  uint8_t getFontScale() const { return fontScale; }
++  void setFontScale(uint8_t scale);
++  void cycleFontScale();
++
++  // 0=portrait, 1=landscape
++  uint8_t getCardOrientation() const { return cardOrientation; }
++  void setCardOrientation(uint8_t orientation);
++  void cycleCardOrientation();
++  bool isLandscapeCards() const { return cardOrientation != 0; }
 +
 +  bool installPulledBatch(std::string& error);
 +  bool loadCurrentCard(AnkiCard& card, std::string& error) const;
@@ -13212,16 +13941,33 @@ index 00000000..cf840338
 +  bool clearSession(std::string& error);
 +
 +  bool hasBatch() const { return cardCount > 0; }
-+  bool hasRemainingCards() const { return cursor < queue.size(); }
++  bool hasRemainingCards() const;
++  bool hasAnyRemainingCards() const;
 +  bool hasPendingReviews() const { return reviewCount > 0; }
-+  bool batchComplete() const { return hasBatch() && !hasRemainingCards(); }
++  bool batchComplete() const { return hasBatch() && !hasAnyRemainingCards(); }
 +  uint16_t getCardCount() const { return cardCount; }
-+  uint16_t getRemainingCount() const {
-+    return cursor < queue.size() ? static_cast<uint16_t>(queue.size() - cursor) : 0;
-+  }
++  uint16_t getRemainingCount() const;
++  uint16_t getAnyRemainingCount() const;
 +  uint16_t getReviewCount() const { return reviewCount; }
 +
++  uint16_t getDeckCount() const { return static_cast<uint16_t>(decks.size()); }
++  uint16_t getCurrentDeckIndex() const { return currentDeck; }
++  bool setCurrentDeck(uint16_t deckIndex);
++  AnkiDeckInfo getDeckInfo(uint16_t deckIndex) const;
++  const std::string& getCurrentDeckName() const;
++
 + private:
++  struct DeckSession {
++    std::string id;
++    std::string name;
++    std::vector<uint16_t> queue;
++    uint16_t cursor = 0;
++
++    uint16_t remaining() const {
++      return cursor < queue.size() ? static_cast<uint16_t>(queue.size() - cursor) : 0;
++    }
++  };
++
 +  AnkiStore() = default;
 +
 +  static constexpr const char* CONFIG_PATH = "/.crosspoint/anki-config.json";
@@ -13232,25 +13978,34 @@ index 00000000..cf840338
 +  static constexpr const char* REVIEWS_PATH = "/.crosspoint/anki-reviews.csv";
 +  static constexpr size_t MAX_CARD_LINE_BYTES = 16384;
 +  static constexpr uint16_t MAX_CARDS = 1000;
++  static constexpr uint16_t MAX_DECKS = 64;
++  static constexpr size_t MAX_DECK_ID_CHARS = 32;
++  static constexpr size_t MAX_DECK_NAME_CHARS = 64;
 +
 +  std::string serverUrl;
 +  std::string apiToken;
++  bool leftHanded = false;
++  uint8_t fontScale = 2;          // medium by default
++  uint8_t cardOrientation = 0;    // 0 portrait, 1 landscape
 +  std::string batchId;
 +  uint16_t cardCount = 0;
-+  uint16_t cursor = 0;
 +  uint16_t reviewCount = 0;
-+  std::vector<uint16_t> queue;
++  uint16_t currentDeck = 0;
++  std::vector<DeckSession> decks;
++  static const std::string EMPTY_DECK_NAME;
 +
 +  bool loadSession(std::string& error);
 +  bool saveSession(std::string& error) const;
 +  bool loadCardByIndex(uint16_t cardIndex, AnkiCard& card, std::string& error) const;
 +  void resetSessionState();
++  DeckSession* currentDeckSession();
++  const DeckSession* currentDeckSession() const;
 +};
 +
 +#define ANKI_STORE AnkiStore::getInstance()
 diff --git a/src/anki/AnkiSyncClient.cpp b/src/anki/AnkiSyncClient.cpp
 new file mode 100644
-index 00000000..a98654e3
+index 0000000..a98654e
 --- /dev/null
 +++ b/src/anki/AnkiSyncClient.cpp
 @@ -0,0 +1,264 @@
@@ -13520,7 +14275,7 @@ index 00000000..a98654e3
 +}
 diff --git a/src/anki/AnkiSyncClient.h b/src/anki/AnkiSyncClient.h
 new file mode 100644
-index 00000000..87f5a79f
+index 0000000..87f5a79
 --- /dev/null
 +++ b/src/anki/AnkiSyncClient.h
 @@ -0,0 +1,26 @@
@@ -13550,8 +14305,75 @@ index 00000000..87f5a79f
 +  static const char* errorString(Error error);
 +  static int lastHttpCode;
 +};
+diff --git a/src/components/icons/anki.h b/src/components/icons/anki.h
+new file mode 100644
+index 0000000..b778d45
+--- /dev/null
++++ b/src/components/icons/anki.h
+@@ -0,0 +1,12 @@
++#pragma once
++#include <cstdint>
++
++// size: 32x32 — stacked flashcards for Anki home menu
++static const uint8_t AnkiIcon[] = {
++    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF0, 0x00, 0x00,
++    0x7F, 0xF7, 0xFF, 0xFF, 0x7F, 0xF7, 0xFF, 0xFF, 0x7F, 0xF7, 0xFF, 0xFF, 0x7F, 0xF7, 0xFF, 0xFF, 0x7F, 0xF7, 0xFF,
++    0xFF, 0x7F, 0xF7, 0x00, 0x00, 0x07, 0xF7, 0x7F, 0xFF, 0xF7, 0xF7, 0x7F, 0xFF, 0xF7, 0xF7, 0x7F, 0xFF, 0xF7, 0xF7,
++    0x7C, 0x1F, 0xF7, 0xF7, 0x7F, 0xFF, 0xF7, 0xF7, 0x60, 0x00, 0x37, 0xF7, 0x7F, 0xFF, 0xF7, 0xF7, 0x7F, 0xFF, 0xF7,
++    0xF7, 0x7F, 0xFF, 0xF7, 0xF7, 0x60, 0x00, 0x37, 0xF7, 0x7F, 0xFF, 0xF7, 0xF0, 0x7F, 0xFF, 0xF7, 0xFF, 0x7F, 0xFF,
++    0xF7, 0xFF, 0x60, 0x01, 0xF7, 0xFF, 0x7F, 0xFF, 0xF7, 0xFF, 0x7F, 0xFF, 0xF7, 0xFF, 0x7F, 0xFF, 0xF7, 0xFF, 0x00,
++    0x00, 0x07, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+diff --git a/src/components/themes/BaseTheme.h b/src/components/themes/BaseTheme.h
+index 39adb75..879fab2 100644
+--- a/src/components/themes/BaseTheme.h
++++ b/src/components/themes/BaseTheme.h
+@@ -100,7 +100,22 @@ struct ThemeMetrics {
+   int textFieldLineEndOffset;
+ };
+ 
+-enum UIIcon { None = 0, Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, Bookmark };
++enum UIIcon {
++  None = 0,
++  Folder,
++  Text,
++  Image,
++  Book,
++  File,
++  Recent,
++  Settings,
++  Transfer,
++  Library,
++  Wifi,
++  Hotspot,
++  Bookmark,
++  Anki
++};
+ 
+ enum class KeyboardKeyType { Normal, Shift, Mode, Space, Del, Ok, Disabled };
+ 
+diff --git a/src/components/themes/lyra/LyraTheme.cpp b/src/components/themes/lyra/LyraTheme.cpp
+index f04f7de..49424cf 100644
+--- a/src/components/themes/lyra/LyraTheme.cpp
++++ b/src/components/themes/lyra/LyraTheme.cpp
+@@ -12,6 +12,7 @@
+ 
+ #include "RecentBooksStore.h"
+ #include "components/UITheme.h"
++#include "components/icons/anki.h"
+ #include "components/icons/book.h"
+ #include "components/icons/book24.h"
+ #include "components/icons/bookmark.h"
+@@ -76,6 +77,8 @@ const uint8_t* iconForName(UIIcon icon, int size) {
+         return HotspotIcon;
+       case UIIcon::Bookmark:
+         return BookmarkIcon;
++      case UIIcon::Anki:
++        return AnkiIcon;
+       default:
+         return nullptr;
+     }
 diff --git a/src/network/CrossPointWebServer.cpp b/src/network/CrossPointWebServer.cpp
-index dc54dd84..39de7c0a 100644
+index dc54dd8..39de7c0 100644
 --- a/src/network/CrossPointWebServer.cpp
 +++ b/src/network/CrossPointWebServer.cpp
 @@ -17,6 +17,7 @@
@@ -13690,7 +14512,7 @@ index dc54dd84..39de7c0a 100644
  
  void CrossPointWebServer::handleGetOpdsServers() const {
 diff --git a/src/network/CrossPointWebServer.h b/src/network/CrossPointWebServer.h
-index fc1aaf6e..e39de62e 100644
+index fc1aaf6..e39de62 100644
 --- a/src/network/CrossPointWebServer.h
 +++ b/src/network/CrossPointWebServer.h
 @@ -108,6 +108,10 @@ class CrossPointWebServer {
@@ -13705,7 +14527,7 @@ index fc1aaf6e..e39de62e 100644
    void handleFontsPage() const;
    void handleFontList() const;
 diff --git a/src/network/html/SettingsPage.html b/src/network/html/SettingsPage.html
-index 8b3bee41..4107317e 100644
+index 8b3bee4..4107317 100644
 --- a/src/network/html/SettingsPage.html
 +++ b/src/network/html/SettingsPage.html
 @@ -300,6 +300,7 @@

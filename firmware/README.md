@@ -13,9 +13,15 @@ Basis:
 Der Patch ergänzt:
 
 - einen eigenen **Anki**-Eintrag im CrossPoint-Hauptmenü,
-- Download des Tagesstapels als speicherschonendes NDJSON,
-- persistente Karten, Warteschlange und Bewertungen auf der SD-Karte,
+- Download aller fälligen Stapel als speicherschonendes NDJSON,
+- Auswahl und Wechsel zwischen geladenen Stapeln am Gerät,
+- persistente Karten, pro-Stapel-Warteschlangen und Bewertungen auf der SD-Karte,
 - Offline-Anzeige von Frage und Antwort mit mehrseitigem Text,
+- Konfigurierbare Schriftgröße (Klein/Mittel/Groß) und Ausrichtung
+  (Hochkant/Quer) in den Anki-Einstellungen,
+- Händigkeit (links/rechts) in den Anki-Einstellungen,
+- Blättern über die Seitentasten (Page Up/Down),
+- Platzhalter bei leeren Kartenseiten; Mac-Add-on mit Feld-Fallback,
 - deutsche sowie moderne und polytonische griechische Schriftzeichen in der
   eingebetteten Anki-Schrift,
 - Bewertungen `Nochmal`, `Schwer`, `Gut` und `Einfach`,
@@ -81,9 +87,12 @@ In **Anki → Anki-Einstellungen** werden eingetragen:
 
 Danach:
 
-1. **Heutige Karten laden**
-2. **Karten lernen** – dies funktioniert ohne WLAN
-3. **Bewertungen übertragen**, sobald Anki auf dem Mac geöffnet ist
+1. **Heutige Karten laden** – lädt alle fälligen Top-Level-Stapel
+2. Bei mehreren Stapeln den gewünschten **Stapel wählen**; während des
+   Lernens mit Zurück ins Menü und einen anderen Stapel wählen
+3. **Karten lernen** (bei nur einem Stapel) – ohne WLAN
+4. **Bewertungen übertragen**, sobald alle Stapel fertig sind und Anki auf
+   dem Mac geöffnet ist
 
 Die lokalen Dateien liegen unter `/.crosspoint/anki-*`. Offene Bewertungen
 werden erst gelöscht, wenn der Mac den Batch eindeutig bestätigt hat.

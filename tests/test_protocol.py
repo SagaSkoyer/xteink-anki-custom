@@ -25,18 +25,26 @@ class ParsePushPayloadTests(unittest.TestCase):
                 "protocol_version": 2,
                 "pull_id": "pull-123",
                 "server_time": 1_785_000_000,
+                "decks": [
+                    {"id": "1", "name": "Greek", "card_count": 1},
+                    {"id": "2", "name": "Spanish", "card_count": 1},
+                ],
                 "cards": [
                     {
                         "id": "1700000000000",
                         "front": "line one\nline two",
                         "back": "Antwort",
                         "is_learning": True,
+                        "deck_id": "1",
+                        "deck_name": "Greek",
                     },
                     {
                         "id": "1700000000001",
                         "front": "Question",
                         "back": "Answer",
                         "is_learning": False,
+                        "deck_id": "2",
+                        "deck_name": "Spanish",
                     },
                 ],
             }
@@ -44,10 +52,33 @@ class ParsePushPayloadTests(unittest.TestCase):
 
         lines = encoded.decode("utf-8").splitlines()
         self.assertEqual(len(lines), 4)
-        self.assertEqual(json.loads(lines[0])["card_count"], 2)
+        meta = json.loads(lines[0])
+        self.assertEqual(meta["card_count"], 2)
+        self.assertEqual(meta["decks"][0]["name"], "Greek")
         self.assertEqual(json.loads(lines[1])["front"], "line one\nline two")
+        self.assertEqual(json.loads(lines[1])["deck_name"], "Greek")
         self.assertEqual(json.loads(lines[2])["type"], "card")
         self.assertEqual(json.loads(lines[3]), {"type": "end", "card_count": 2})
+
+    def test_pull_ndjson_omits_empty_decks_list_when_missing(self):
+        encoded = encode_pull_ndjson(
+            {
+                "status": "success",
+                "protocol_version": 2,
+                "pull_id": "pull-legacy",
+                "server_time": 1,
+                "cards": [
+                    {
+                        "id": "1",
+                        "front": "Q",
+                        "back": "A",
+                        "is_learning": False,
+                    }
+                ],
+            }
+        )
+        meta = json.loads(encoded.decode("utf-8").splitlines()[0])
+        self.assertEqual(meta["decks"], [])
 
     def test_json_batch(self):
         body = json.dumps(

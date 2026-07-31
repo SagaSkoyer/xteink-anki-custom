@@ -1,81 +1,128 @@
-# Xteink X4 ↔ Anki Offline Sync
+# Xteink X4 ↔ Anki offline sync
 
-Dieses Projekt enthält ein Anki-Desktop-Add-on, das den Mac als Scheduler und
-AnkiWeb-Sync-Instanz nutzt. Der Xteink X4 lädt morgens einen begrenzten
-Tagesstapel, lernt offline und sendet anschließend sein Bewertungsprotokoll an
-den Mac zurück.
+**Offline Anki reviews on the [Xteink X4](https://xteink.com) e-ink reader**, with scheduling and AnkiWeb sync still handled by Anki Desktop on your computer.
 
-## Datenfluss
+| Piece | Role |
+| --- | --- |
+| **Anki add-on** (`xteink_sync`) | Local LAN server: due cards out, reviews in, then normal AnkiWeb sync |
+| **X4 firmware** (CrossPoint 1.4.1 patch) | Offline study UI: multi-deck, grades, Greek/German fonts, SD storage |
 
-1. Anki auf dem Mac synchronisiert sich mit AnkiWeb.
-2. Der X4 ruft `GET /pull` ab und speichert die Karten sowie `pull_id`.
-3. Der X4 lernt offline und protokolliert jede Bewertung in Reihenfolge.
-4. Der X4 sendet die Bewertungen mit `POST /push` zurück. `pull_id` wird dabei
-   als `batch_id` verwendet.
-5. Das Add-on übernimmt die Bewertungen über Ankís Scheduler und stößt danach
-   den normalen AnkiWeb-Sync an.
+> Community project — not an official Xteink or Anki product. Firmware is a **patch** on [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) 1.4.1, not a full fork.
 
-Das Add-on greift nicht direkt schreibend auf SQLite zu. Collection-Zugriffe
-laufen über Ankís serialisierte Hintergrundoperationen.
+## Status (v2.2.6)
 
-## Installation auf dem Mac
+Working for daily use on X4 + Anki Desktop (macOS tested):
 
-Die fertige Datei `dist/xteink_sync.ankiaddon` in Anki über
-**Werkzeuge → Erweiterungen → Aus Datei installieren** installieren und Anki
-neu starten.
+- Pull **all top-level decks with due cards** (not only the open deck)
+- Up to **250 cards per deck** / **1000 cards total** per pull (configurable)
+- Deck select/switch on device, progress strip, landscape/portrait, handedness
+- Grades: **Again · Hard · Good · Easy** (physical L→R)
+- Modern + polytonic Greek and German in the card font
+- Push reviews with batch id (safe retries); scheduler runs on the Mac
 
-Danach unter **Werkzeuge → Xteink Status** die LAN-Adresse und den automatisch
-generierten API-Token ablesen. Der Mac und der X4 müssen einander im lokalen
-Netz erreichen können; die macOS-Firewall muss eingehende Verbindungen für
-Anki erlauben.
+Known limits of the offline model: learning steps after Again/Hard are re-queued **locally** on the X4; final intervals always come from Anki’s scheduler after push.
 
-Die Konfiguration kann unter **Werkzeuge → Erweiterungen → Xteink X4 E-Ink
-Offline Sync → Konfiguration** geändert werden.
+## Quick start
 
-## Installation auf dem X4
+### 1. Anki Desktop (Mac/Windows/Linux)
 
-Für CrossPoint 1.4.1 liegt die gebaute X4-Firmware unter
-`dist/crosspoint-1.4.1-xteink-anki.bin`. Nach dem Flashen erscheint **Anki**
-als eigener Punkt im CrossPoint-Hauptmenü. Serveradresse und API-Token werden
-bequem über **Datentransfer → Netzwerk beitreten** und anschließend
-`http://crosspoint.local/settings` eingetragen. Die Eingabe direkt am X4 bleibt
-als Alternative erhalten.
+1. Download `xteink_sync.ankiaddon` from the [latest Release](https://github.com/jakovm/xteink-anki/releases/latest).
+2. Anki → **Tools → Add-ons → Install from file…**
+3. Restart Anki.
+4. **Tools → Xteink Status** → note **LAN URL** and **API token**.
+5. Allow Anki through the OS firewall for local network connections.
 
-Der Anki-Kartentext verwendet die eingebettete CrossPoint-UI-Schrift mit
-deutschen sowie modernen und polytonischen griechischen Schriftzeichen.
+Optional config: **Tools → Add-ons → Xteink X4 E-Ink Offline Sync → Config** (`max_cards`, port, …).
 
-Die Verbindungseinstellungen bleiben auf der SD-Karte gespeichert. Damit sich
-die IP-Adresse des Macs nicht durch DHCP ändert, sollte sie im Router für den
-Mac reserviert werden.
+### 2. Xteink X4
 
-Der vollständige, reproduzierbare Build- und Flash-Ablauf steht in
-[`firmware/README.md`](firmware/README.md). Das Firmware-Binary ist nur für den
-Xteink X4 auf Basis von CrossPoint 1.4.1 vorgesehen.
+1. Download `crosspoint-1.4.1-xteink-anki.bin` from the same Release (check `SHA256SUMS`).
+2. Flash **only** on an X4 with CrossPoint **1.4.1** layout (CrossPoint web flasher “Custom .bin”, or **Settings → Firmware from SD**).
+3. On the device: **Data transfer → Join network**.
+4. In a browser: `http://crosspoint.local/settings` → **Anki Offline Sync**
+   - Mac server URL, e.g. `http://192.168.1.23:5050`
+   - API token from Anki
+5. Home → **Anki** → load today’s cards, study, push reviews when back on Wi‑Fi.
 
-## HTTP-API
+Reserve a DHCP lease for the computer so the server IP stays stable.
 
-Standardadresse: `http://<MAC-IP>:5050`
+Full firmware build/flash notes: [`firmware/README.md`](firmware/README.md).
 
-Geschützte Endpunkte erwarten einen der folgenden Header:
+## Data flow
 
-```http
-Authorization: Bearer <API-TOKEN>
+```text
+AnkiWeb ←→ Anki Desktop (scheduler) ←LAN→ Xteink X4 (offline reviews)
+                 │
+                 ├─ GET  /pull   → due cards (JSON or NDJSON)
+                 └─ POST /push   → review log (batch_id = pull_id)
 ```
 
-oder:
+The add-on does **not** write Anki’s SQLite directly. Collection access goes through Anki’s serialized ops; after a successful push it can trigger the normal AnkiWeb sync.
 
-```http
-X-Xteink-Token: <API-TOKEN>
+## HTTP API (summary)
+
+Base URL: `http://<PC-IP>:5050`
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `GET /health` | no | Liveness |
+| `GET /pull` | token | Due cards (`Accept: application/x-ndjson` for streaming) |
+| `POST /push` | token | Reviews JSON or CSV |
+
+Auth header: `Authorization: Bearer <token>` or `X-Xteink-Token: <token>`.
+
+Ease values: `1=Again`, `2=Hard`, `3=Good`, `4=Easy`. Details and examples: see the German long-form API section below or the release notes.
+
+## Repository layout
+
+```text
+xteink_sync/     Anki add-on source
+firmware/        Patch + build scripts against CrossPoint 1.4.1
+dist/            Prebuilt .ankiaddon + .bin + SHA256SUMS
+tests/           Protocol / textutil unit tests
+scripts/         Layout helpers
 ```
+
+## Development
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 -m py_compile xteink_sync/*.py
+
+# Rebuild add-on package
+rm -f dist/xteink_sync.ankiaddon
+( cd xteink_sync && zip -r ../dist/xteink_sync.ankiaddon \
+    __init__.py config.json config.md manifest.json \
+    protocol.py textutil.py user_files )
+
+# Rebuild firmware (needs PlatformIO / pioarduino)
+./firmware/build.sh
+```
+
+## Sharing with Anki & Xteink communities
+
+- **Anki users:** install the add-on only; any compatible client could use the HTTP API.
+- **Xteink / CrossPoint:** use the release binary or rebuild from the patch; please report issues against *this* repo first, not upstream CrossPoint, unless the bug is in base CrossPoint.
+
+Upstream merge into official CrossPoint is **not** assumed — this stays a community patch unless maintainers want it.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). CrossPoint upstream is MIT; Anki itself is AGPL-3.0 (runtime dependency of the add-on).
+
+## Security
+
+LAN-only, token-protected. See [`SECURITY.md`](SECURITY.md).
+
+---
+
+## API details (DE / long form)
 
 ### Status
 
 ```http
 GET /health
 ```
-
-Dieser Endpunkt benötigt keinen Token und liefert nur Dienst- und
-Bereitschaftsinformationen.
 
 ### Tageskarten laden
 
@@ -84,7 +131,7 @@ GET /pull
 Authorization: Bearer <API-TOKEN>
 ```
 
-Beispielantwort:
+JSON example:
 
 ```json
 {
@@ -92,6 +139,9 @@ Beispielantwort:
   "protocol_version": 2,
   "pull_id": "e6b4f2c58b954f77956792816ca17db3",
   "server_time": 1785349777,
+  "decks": [
+    {"id": "1512345678901", "name": "Greek", "card_count": 1}
+  ],
   "cards": [
     {
       "id": "1700000000000",
@@ -101,27 +151,17 @@ Beispielantwort:
       "is_learning": false,
       "queue": 2,
       "reps": 12,
-      "mod": 1785300000
+      "mod": 1785300000,
+      "deck_id": "1512345678901",
+      "deck_name": "Greek"
     }
   ]
 }
 ```
 
-Der X4 fordert denselben Endpunkt mit
-`Accept: application/x-ndjson` an. Dann wird der Stapel als Kopfzeile, eine
-JSON-Zeile pro Karte und eine Abschlusszeile übertragen. Dadurch kann die
-Firmware die Antwort direkt auf die SD-Karte streamen, ohne den gesamten
-Tagesstapel im knappen ESP32-C3-Arbeitsspeicher zu halten. Andere Clients
-erhalten weiterhin unverändert die JSON-Antwort oben.
-
-Die Auswahl stammt aus Ankís echter Scheduler-Queue und berücksichtigt damit
-den aktuell gewählten Stapel, Reihenfolge und Tageslimits. Karten werden aus
-ihren Templates gerendert; das funktioniert auch mit Cloze- und
-benutzerdefinierten Notiztypen ohne feste Feldnamen wie `Front` und `Back`.
+Mit `Accept: application/x-ndjson` streamt der Server Kopfzeile, eine JSON-Zeile pro Karte und eine Abschlusszeile (ESP32-C3-freundlich).
 
 ### Bewertungen zurücksenden
-
-Empfohlenes Format:
 
 ```http
 POST /push
@@ -141,50 +181,8 @@ Content-Type: application/json
 }
 ```
 
-`ease` entspricht Anki: `1=Again`, `2=Hard`, `3=Good`, `4=Easy`. Die
-Reihenfolge im Array ist verbindlich. Eine Karte darf mehrfach vorkommen,
-damit lokale Lernschritte übertragen werden können.
+`batch_id` macht Retries sicher (`duplicate` wenn schon verarbeitet). CSV bleibt kompatibel; optional `X-Xteink-Batch-ID`.
 
-`batch_id` macht Wiederholungsversuche sicher: Ein bereits vollständig
-bearbeiteter Batch wird als `duplicate` bestätigt und nicht erneut gewertet.
-Der X4 sollte deshalb die beim Pull erhaltene `pull_id` unverändert verwenden.
+### Offline-Grenze
 
-Das bisherige CSV-Format bleibt standardmäßig kompatibel:
-
-```text
-1700000000000,3
-1700000000001,1
-```
-
-Optional sind Zeit und Bearbeitungsdauer möglich:
-
-```text
-card_id,ease,answered_at,duration_ms
-1700000000000,3,1785391200,4200
-```
-
-Für zuverlässige Wiederholungsversuche sollte CSV zusätzlich den Header
-`X-Xteink-Batch-ID: <pull_id>` senden.
-
-## Wichtige Grenze des Offline-Modells
-
-Ein morgendlicher Snapshot kann nicht vollständig vorhersagen, welche
-Lernkarten durch `Again` oder `Hard` später am selben Tag erneut erscheinen
-sollen. Der X4 muss solche Wiederholungen entweder lokal planen und mehrfach
-protokollieren, oder die Karte erscheint beim nächsten Pull wieder. Die
-endgültige Terminierung jeder übertragenen Bewertung berechnet stets der
-Anki-Scheduler auf dem Mac.
-
-## Entwicklung
-
-Protokolltests:
-
-```bash
-python3 -m unittest discover -s tests -v
-```
-
-Syntaxprüfung:
-
-```bash
-python3 -m py_compile xteink_sync/__init__.py xteink_sync/protocol.py
-```
+Ein morgendlicher Snapshot kennt Lernschritte nach Again/Hard nicht vollständig. Der X4 plant lokal nach und protokolliert mehrfach; die endgültige Terminierung macht immer Anki auf dem Rechner.

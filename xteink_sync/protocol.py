@@ -52,6 +52,12 @@ def encode_pull_ndjson(payload: Mapping[str, Any]) -> bytes:
     if not isinstance(cards, list):
         raise ValueError("pull payload cards must be a list")
 
+    decks = payload.get("decks")
+    if decks is None:
+        decks = []
+    if not isinstance(decks, list):
+        raise ValueError("pull payload decks must be a list")
+
     meta = {
         "type": "meta",
         "status": payload.get("status", "success"),
@@ -59,6 +65,7 @@ def encode_pull_ndjson(payload: Mapping[str, Any]) -> bytes:
         "pull_id": payload.get("pull_id"),
         "server_time": payload.get("server_time"),
         "card_count": len(cards),
+        "decks": decks,
     }
     lines = [json.dumps(meta, ensure_ascii=False, separators=(",", ":"))]
     for card in cards:

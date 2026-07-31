@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import hmac
-import html
 import json
 import logging
-import re
 import secrets
 import socket
 import threading
@@ -28,7 +26,6 @@ from anki.consts import (
     CARD_TYPE_REV,
 )
 from anki.scheduler.v3 import CardAnswer
-from anki.utils import strip_html
 from aqt import gui_hooks, mw
 from aqt.operations import CollectionOp, QueryOp
 from aqt.qt import QAction, QTimer, qconnect
@@ -42,17 +39,20 @@ from .protocol import (
     encode_pull_ndjson,
     parse_push_payload,
 )
+from . import textutil
 
 
-ADDON_VERSION = "2.1.0"
+ADDON_VERSION = "2.2.4"
 PROTOCOL_VERSION = 2
+MAX_TOTAL_PULL_CARDS = 1000
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
     "bind_address": "0.0.0.0",
     "port": 5050,
     "api_token": "",
-    "max_cards": 100,
+    # Soft cap per deck; total pull is still limited by MAX_TOTAL_PULL_CARDS.
+    "max_cards": 250,
     "max_text_chars": 4096,
     "max_reviews_per_push": 500,
     "max_request_bytes": 262144,
@@ -108,18 +108,6 @@ TRANSLATIONS = {
     },
 }
 
-_ANSWER_SEPARATOR_RE = re.compile(
-    r"<hr\b[^>]*\bid\s*=\s*([\"']?)answer\1[^>]*>",
-    flags=re.IGNORECASE,
-)
-_SCRIPT_STYLE_RE = re.compile(
-    r"<(script|style)\b[^>]*>.*?</\1\s*>",
-    flags=re.IGNORECASE | re.DOTALL,
-)
-_STRUCTURAL_TAG_RE = re.compile(
-    r"</?(?:br|div|p|li|tr|h[1-6])\b[^>]*>",
-    flags=re.IGNORECASE,
-)
 _CARD_TYPE_NAMES = {
     int(CARD_TYPE_NEW): "new",
     int(CARD_TYPE_LRN): "learning",
@@ -166,6 +154,19 @@ def _t(key: str, **kwargs: Any) -> str:
     return text.format(**kwargs) if kwargs else text
 
 
+def _deck_display_name(full_name: str) -> str:
+    """Human-readable deck path for the X4 list (keep hierarchy, stay compact)."""
+    name = (full_name or "").strip()
+    if not name:
+        return "Anki"
+    # Anki uses :: for nesting; show a lighter separator on the device.
+    name = name.replace("::", " / ")
+    # Device clips around 64 chars; keep a little headroom for UTF-8.
+    if len(name) > 60:
+        name = "…" + name[-59:]
+    return name
+
+
 def _int_config(config: Dict[str, Any], key: str) -> int:
     fallback = int(DEFAULT_CONFIG[key])
     try:
@@ -175,29 +176,101 @@ def _int_config(config: Dict[str, Any], key: str) -> int:
         return fallback
 
 
-def _plain_text(card_html: str, limit: int) -> str:
-    without_code = _SCRIPT_STYLE_RE.sub("", card_html)
-    with_breaks = _STRUCTURAL_TAG_RE.sub("\n", without_code)
-    text = html.unescape(strip_html(with_breaks)).replace("\r\n", "\n")
-    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n")]
-
-    compact_lines = []
-    for line in lines:
-        if line:
-            compact_lines.append(line)
-        elif compact_lines and compact_lines[-1]:
-            compact_lines.append("")
-
-    result = "\n".join(compact_lines).strip()
-    if len(result) > limit:
-        return result[: max(0, limit - 1)].rstrip() + "…"
-    return result
+def _note_fields(card: Card, text_limit: int) -> Dict[str, str]:
+    try:
+        note = card.note()
+        model = note.note_type()
+        pairs: List[Tuple[str, str]] = []
+        for index, field_def in enumerate(model["flds"]):
+            raw = note.fields[index] if index < len(note.fields) else ""
+            pairs.append((field_def["name"], raw))
+        return textutil.field_map_from_pairs(pairs, limit=text_limit)
+    except Exception:
+        LOGGER.exception(
+            "Could not read note fields for card %s", getattr(card, "id", "?")
+        )
+        return {}
 
 
-def _answer_only(answer_html: str) -> str:
-    split = _ANSWER_SEPARATOR_RE.split(answer_html, maxsplit=1)
-    # The capturing quote group is included by re.split().
-    return split[-1] if len(split) >= 3 else answer_html
+def _template_meta(card: Card) -> Tuple[str, str, int]:
+    try:
+        note = card.note()
+        model = note.note_type()
+        ord_ = int(card.ord)
+        templates = model.get("tmpls") or []
+        template_name = ""
+        if 0 <= ord_ < len(templates):
+            template_name = str(templates[ord_].get("name") or "")
+        return template_name, str(model.get("name") or ""), ord_
+    except Exception:
+        return "", "", int(getattr(card, "ord", 0) or 0)
+
+
+def _render_card_html(card: Card) -> Tuple[str, str]:
+    """Return raw question/answer HTML, preferring render_output when available."""
+
+    try:
+        if hasattr(card, "render_output"):
+            output = card.render_output(reload=True)
+            question_html = getattr(output, "question_text", None) or ""
+            answer_html = getattr(output, "answer_text", None) or ""
+            # Some Anki builds expose question/answer with CSS wrappers instead.
+            if not question_html and hasattr(output, "question_and_style"):
+                question_html = output.question_and_style()
+            if not answer_html and hasattr(output, "answer_and_style"):
+                answer_html = output.answer_and_style()
+            if question_html or answer_html:
+                return str(question_html or ""), str(answer_html or "")
+    except Exception:
+        LOGGER.exception(
+            "render_output failed for card %s; falling back to question()/answer()",
+            getattr(card, "id", "?"),
+        )
+
+    try:
+        return str(card.question() or ""), str(card.answer() or "")
+    except Exception:
+        LOGGER.exception(
+            "question()/answer() failed for card %s", getattr(card, "id", "?")
+        )
+        return "", ""
+
+
+def _card_side_texts(card: Card, text_limit: int) -> Tuple[str, str]:
+    """Build front/back text that stays readable on the X4 even with odd templates."""
+
+    question_html, answer_html = _render_card_html(card)
+    rendered_front = textutil.plain_text(question_html, text_limit)
+    rendered_back = textutil.plain_text(textutil.answer_only(answer_html), text_limit)
+    if not rendered_back:
+        # Some templates put the whole card in answer(); strip the front part if present.
+        full_answer = textutil.plain_text(answer_html, text_limit)
+        if rendered_front and full_answer.startswith(rendered_front):
+            rendered_back = full_answer[len(rendered_front) :].lstrip("\n ").strip()
+        else:
+            rendered_back = full_answer
+
+    fields = _note_fields(card, text_limit)
+    template_name, note_type_name, ord_ = _template_meta(card)
+    reverse = textutil.looks_reversed_template(template_name, note_type_name, ord_)
+    front, back = textutil.combine_sides(
+        rendered_front,
+        rendered_back,
+        fields,
+        text_limit=text_limit,
+        reverse=reverse,
+    )
+
+    if front == textutil.EMPTY_SIDE_PLACEHOLDER or back == textutil.EMPTY_SIDE_PLACEHOLDER:
+        LOGGER.warning(
+            "Card %s still weak after fallbacks (front=%r back=%r fields=%s tmpl=%r)",
+            getattr(card, "id", "?"),
+            front,
+            back,
+            list(fields.keys()),
+            template_name,
+        )
+    return front, back
 
 
 def _local_ipv4_addresses() -> List[str]:
@@ -542,44 +615,209 @@ class XteinkAddon:
             operation.failure(result.set_exception).run_in_background()
 
         mw.taskman.run_on_main(start_query)
-        cards = self._wait_for_future(result)
+        cards, decks = self._wait_for_future(result)
         return {
             "status": "success",
             "protocol_version": PROTOCOL_VERSION,
             "pull_id": uuid.uuid4().hex,
             "server_time": int(time.time()),
+            "decks": decks,
             "cards": cards,
         }
 
-    def _collect_due_cards(self, collection: Any) -> List[Dict[str, Any]]:
-        max_cards = max(1, min(_int_config(self.config, "max_cards"), 1000))
+    def _collect_due_cards(
+        self, collection: Any
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        max_cards_per_deck = max(1, min(_int_config(self.config, "max_cards"), 1000))
         text_limit = max(128, _int_config(self.config, "max_text_chars"))
-        queued_cards = collection.sched.get_queued_cards(fetch_limit=max_cards).cards
+        original_deck_id = collection.decks.get_current_id()
 
-        payload = []
-        for queued_card in queued_cards:
-            card = Card(collection, backend_card=queued_card.card)
-            card_type = int(card.type)
-            answer_html = _answer_only(card.answer())
-            payload.append(
-                {
-                    "id": str(int(card.id)),
-                    "front": _plain_text(card.question(), text_limit),
-                    "back": _plain_text(answer_html, text_limit),
-                    "card_type": _CARD_TYPE_NAMES.get(card_type, "unknown"),
-                    # Kept for compatibility with the original X4 client.
-                    "is_learning": card_type
-                    in {
-                        int(CARD_TYPE_NEW),
-                        int(CARD_TYPE_LRN),
-                        int(CARD_TYPE_RELEARNING),
-                    },
-                    "queue": int(card.queue),
-                    "reps": int(card.reps),
-                    "mod": int(card.mod),
-                }
+        try:
+            # Deepest decks first; pure parent folders are skipped (children cover them).
+            study_decks = self._due_study_decks(collection)
+            payload: List[Dict[str, Any]] = []
+            seen_card_ids: set[int] = set()
+            deck_counts: Dict[str, Dict[str, Any]] = {}
+
+            deck_count = max(1, len(study_decks))
+            # Fair share so one large stack cannot starve the rest of the pull.
+            fair_share = max(
+                1,
+                min(max_cards_per_deck, MAX_TOTAL_PULL_CARDS // deck_count),
             )
-        return payload
+
+            for study_deck_id, study_deck_name, child_due in study_decks:
+                remaining_budget = MAX_TOTAL_PULL_CARDS - len(payload)
+                if remaining_budget <= 0:
+                    break
+
+                collection.decks.select(study_deck_id)
+                # Parent queues interleave subdeck cards; over-fetch then keep only
+                # cards whose home deck is this study deck (children already pulled).
+                fetch_limit = min(
+                    remaining_budget,
+                    max(fair_share, max_cards_per_deck) + max(0, int(child_due)),
+                )
+                if fetch_limit <= 0:
+                    break
+
+                try:
+                    queued_cards = collection.sched.get_queued_cards(
+                        fetch_limit=fetch_limit
+                    ).cards
+                except Exception:
+                    LOGGER.exception(
+                        "get_queued_cards failed for deck %s (%s)",
+                        study_deck_id,
+                        study_deck_name,
+                    )
+                    continue
+
+                accepted_for_deck = 0
+                for queued_card in queued_cards:
+                    if accepted_for_deck >= max_cards_per_deck:
+                        break
+                    if len(payload) >= MAX_TOTAL_PULL_CARDS:
+                        break
+
+                    try:
+                        card_id = int(queued_card.card.id)
+                    except Exception:
+                        card = Card(collection, backend_card=queued_card.card)
+                        card_id = int(card.id)
+                    if card_id in seen_card_ids:
+                        continue
+
+                    try:
+                        card = collection.get_card(card_id)
+                    except Exception:
+                        card = Card(collection, backend_card=queued_card.card)
+
+                    try:
+                        home_deck_id = int(card.did)
+                    except Exception:
+                        home_deck_id = int(study_deck_id)
+
+                    # Only keep cards that live in this study deck. When a parent
+                    # is selected, subdeck cards are skipped (already handled as leaves).
+                    if home_deck_id != int(study_deck_id):
+                        continue
+
+                    seen_card_ids.add(card_id)
+                    try:
+                        home_deck_name = collection.decks.name(home_deck_id)
+                    except Exception:
+                        home_deck_name = study_deck_name or str(home_deck_id)
+                    display_name = _deck_display_name(home_deck_name)
+
+                    card_type = int(card.type)
+                    front_text, back_text = _card_side_texts(card, text_limit)
+                    deck_key = str(home_deck_id)
+                    # deck_id / deck_name first so embedded clients see titles even if a
+                    # later field is dropped under memory pressure when parsing the line.
+                    payload.append(
+                        {
+                            "id": str(card_id),
+                            "deck_id": deck_key,
+                            "deck_name": display_name,
+                            "front": front_text,
+                            "back": back_text,
+                            "card_type": _CARD_TYPE_NAMES.get(card_type, "unknown"),
+                            # Kept for compatibility with the original X4 client.
+                            "is_learning": card_type
+                            in {
+                                int(CARD_TYPE_NEW),
+                                int(CARD_TYPE_LRN),
+                                int(CARD_TYPE_RELEARNING),
+                            },
+                            "queue": int(card.queue),
+                            "reps": int(card.reps),
+                            "mod": int(card.mod),
+                        }
+                    )
+                    accepted_for_deck += 1
+                    summary = deck_counts.get(deck_key)
+                    if summary is None:
+                        deck_counts[deck_key] = {
+                            "id": deck_key,
+                            "name": display_name,
+                            "card_count": 1,
+                        }
+                    else:
+                        summary["card_count"] = int(summary["card_count"]) + 1
+
+            decks_summary = list(deck_counts.values())
+            LOGGER.info(
+                "Xteink pull: %s cards across %s decks (study units=%s)",
+                len(payload),
+                len(decks_summary),
+                len(study_decks),
+            )
+            return payload, decks_summary
+        finally:
+            try:
+                collection.decks.select(original_deck_id)
+            except Exception:
+                LOGGER.exception("Could not restore the previously selected Anki deck")
+
+    def _due_study_decks(
+        self, collection: Any
+    ) -> List[Tuple[int, str, int]]:
+        """Due study units deepest-first: (deck_id, name, child_due_sum).
+
+        Pure parent folders (due only from children) are skipped so each leaf
+        becomes its own selectable stack. Parents that still have own due cards
+        (total due > sum of children) remain included.
+        """
+
+        study_decks: List[Tuple[int, str, int]] = []
+
+        def due_count(node: Any) -> int:
+            return (
+                int(getattr(node, "review_count", 0) or 0)
+                + int(getattr(node, "learn_count", 0) or 0)
+                + int(getattr(node, "new_count", 0) or 0)
+            )
+
+        def walk(node: Any) -> None:
+            children = list(getattr(node, "children", None) or [])
+            for child in children:
+                walk(child)
+
+            total_due = due_count(node)
+            if total_due <= 0:
+                return
+
+            child_due = sum(due_count(child) for child in children)
+            # Anki tree counts are cumulative (self + children). Skip pure folders.
+            if children and total_due <= child_due:
+                return
+
+            deck_id = int(node.deck_id)
+            if deck_id == 0:
+                return
+            try:
+                deck_name = collection.decks.name(deck_id)
+            except Exception:
+                deck_name = str(getattr(node, "name", "") or deck_id)
+            if not deck_name:
+                return
+            study_decks.append((deck_id, deck_name, child_due))
+
+        try:
+            root = collection.sched.deck_due_tree()
+        except Exception:
+            LOGGER.exception("Could not read Anki's deck due tree")
+            root = None
+
+        if root is not None:
+            walk(root)
+            if study_decks:
+                return study_decks
+
+        # Fallback: current deck only (legacy behaviour).
+        current_id = int(collection.decks.get_current_id())
+        return [(current_id, collection.decks.name(current_id), 0)]
 
     def claim_batch(self, batch_id: str) -> str:
         with self._batch_lock:
