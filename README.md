@@ -90,7 +90,8 @@ The **Mac-side converter** lives in `xteink_sync/textutil.py` (`to_device_text` 
 | **Bold** | `**lemma**` or `__lemma__` / `<b>` | STX/ETX markers in pull payload; X4 draws bold runs (also accepts raw `**…**`) |
 | Unordered list | `- item` / `* item` | `• item` |
 | Ordered list | `1. item` | `1. item` |
-| Table | GFM pipe table, **2–4 columns** | fixed-width columns, header + rule |
+| Table | GFM pipe table, **2–4 columns** | **Vector grid** (`\x04table…`, 1px lines); wide → stacked |
+| Figure | `[fig:stem|…]` / stress / timeline | **Vector fig** (`\x04fig t=…`, boxes + lines) |
 
 **Tier 2 — optional**
 
@@ -128,15 +129,28 @@ Tables are the main reason XFD exists. Prefer **atomic paradigms**, not chapter 
 | 3  | λύει   | λύουσι(ν) |
 ```
 
-Target plain layout after conversion:
+**Figures (vector, no images):**
+
+```text
+[fig:stem|λυ-|-ω|λύω]
+[fig:stress:2|κα|λη|μέ|ρα]
+[fig:timeline:1|Verg.|Jetzt|Zukunft|Aorist?]
+```
+
+Or fenced: ` ```fig stem ` / `stress N` / `timeline N` with `|`-separated cells.
+
+Target plain layout after conversion (ASCII box — UI_12 has no Unicode box glyphs):
 
 ```text
 λύω — Present Active
 
-        Sg          Pl
-1.      λύω         λύομεν
-2.      λύεις       λύετε
-3.      λύει        λύουσι(ν)
++---+-------+----------+
+|   | Sg    | Pl       |
++---+-------+----------+
+| 1 | λύω   | λύομεν   |
+| 2 | λύεις | λύετε    |
+| 3 | λύει  | λύουσι(ν)|
++---+-------+----------+
 ```
 
 **Card patterns that work well**

@@ -21,13 +21,18 @@ fi
 
 "${platformio_command[@]}" run --project-dir "${source_dir}" -e gh_release
 
-font_header="${source_dir}/lib/EpdFont/builtinFonts/ubuntu_12_regular.h"
-for required_glyph in U+00DF U+00E4 U+037E U+0387 U+03B1 U+03C9 U+1F00; do
-  if ! grep -Fq "${required_glyph}" "${font_header}"; then
-    printf 'Required Anki font glyph %s is missing from %s\n' \
-      "${required_glyph}" "${font_header}" >&2
-    exit 1
-  fi
+# UI_12 (small/large) and UI_18 (native medium) must both carry DE/Greek/romanization.
+for font_header in \
+  "${source_dir}/lib/EpdFont/builtinFonts/ubuntu_12_regular.h" \
+  "${source_dir}/lib/EpdFont/builtinFonts/ubuntu_18_regular.h"
+do
+  for required_glyph in U+00DF U+00E4 U+037E U+0387 U+03B1 U+03C9 U+1F00 U+1E53; do
+    if ! grep -Fq "${required_glyph}" "${font_header}"; then
+      printf 'Required Anki font glyph %s is missing from %s\n' \
+        "${required_glyph}" "${font_header}" >&2
+      exit 1
+    fi
+  done
 done
 
 install -m 0644 "${source_dir}/.pio/build/gh_release/firmware.bin" "${output_file}"

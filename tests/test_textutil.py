@@ -13,6 +13,31 @@ SPEC.loader.exec_module(TEXTUTIL)
 
 
 class TextUtilTests(unittest.TestCase):
+    def test_fig_stem_emit_and_shortcut(self):
+        block = TEXTUTIL.emit_fig_stem("λυ-", "-ω", "λύω")
+        self.assertIn(TEXTUTIL.FIG_START_PREFIX or "\x04fig ", block)
+        self.assertIn("t=stem", block)
+        self.assertIn("λυ-", block)
+        self.assertTrue(block.endswith(TEXTUTIL.FIG_END_LINE) or "\x04/fig" in block)
+        short = TEXTUTIL.plain_text("[fig:stem|λυ-|-ω|λύω]")
+        self.assertIn("t=stem", short)
+        self.assertIn("\x06", short)
+
+    def test_fig_stress_and_timeline_shortcuts(self):
+        s = TEXTUTIL.plain_text("[fig:stress:2|κα|λη|μέ|ρα]")
+        self.assertIn("t=stress", s)
+        self.assertIn("s=2", s)
+        t = TEXTUTIL.plain_text("[fig:timeline:1|Verg.|Jetzt|Zukunft|Aorist?]")
+        self.assertIn("t=timeline", t)
+        self.assertIn("m=1", t)
+        self.assertIn("Aorist?", t)
+
+    def test_fig_fence(self):
+        md = "```fig stem\nλυ- | -ω | λύω\n```"
+        out = TEXTUTIL.plain_text(md)
+        self.assertIn("t=stem", out)
+        self.assertIn("λύω", out)
+
     def test_img_alt_becomes_text(self):
         text = TEXTUTIL.plain_text('<img src="haus.jpg" alt="Haus">')
         self.assertEqual(text, "[Haus]")
@@ -110,6 +135,37 @@ class XfdConverterTests(unittest.TestCase):
         text = TEXTUTIL.to_device_text(src)
         self.assertIn(f"{TEXTUTIL.BOLD_ON}λύω{TEXTUTIL.BOLD_OFF}", text)
         self.assertEqual(TEXTUTIL.strip_style_markers(text).count("λύω"), 1)
+        # Vector table block; bold lives inside a cell row.
+        self.assertIn(f"{TEXTUTIL.TABLE_RS}table ", text)
+        self.assertIn(TEXTUTIL.TABLE_END_LINE, text)
+        self.assertIn("Form", text)
+
+    def test_table_columns_align_with_bold(self):
+        src = "\n".join(
+            [
+                "|    | Sg     | Pl        |",
+                "| -- | ------ | --------- |",
+                "| 1  | **λύω** | λύομεν    |",
+                "| 2  | λύεις  | λύετε     |",
+            ]
+        )
+        text = TEXTUTIL.to_device_text(src)
+        # Conjugation → vector block, flag C, no Sg/Pl header.
+        self.assertIn(f"{TEXTUTIL.TABLE_RS}table ", text)
+        self.assertIn("f=C", text)
+        self.assertIn(TEXTUTIL.CELL_US, text)
+        self.assertIn(f"{TEXTUTIL.BOLD_ON}λύω{TEXTUTIL.BOLD_OFF}", text)
+        self.assertNotIn("Sg", TEXTUTIL.strip_style_markers(text))
+        self.assertNotIn("Pl", TEXTUTIL.strip_style_markers(text))
+        # Two person rows between start and end markers.
+        body = [
+            ln
+            for ln in text.splitlines()
+            if TEXTUTIL.CELL_US in ln or (ln and not ln.startswith(TEXTUTIL.TABLE_RS))
+        ]
+        # Filter to true cell rows only.
+        cell_rows = [ln for ln in text.splitlines() if TEXTUTIL.CELL_US in ln]
+        self.assertEqual(len(cell_rows), 2, msg=text)
 
     def test_md_pipe_table_paradigm(self):
         src = "\n".join(
@@ -125,13 +181,19 @@ class XfdConverterTests(unittest.TestCase):
         )
         text = TEXTUTIL.to_device_text(src)
         self.assertIn("λύω — Present Active", text)
-        self.assertIn("Sg", text)
-        self.assertIn("Pl", text)
         self.assertIn("λύομεν", text)
         self.assertIn("λύουσι(ν)", text)
-        # Header rule present; no raw pipes.
-        self.assertNotIn("|", text)
-        self.assertRegex(text, r"-{3,}")
+        # Conjugation: person rows only in a vector block — no Sg/Pl, no ASCII box.
+        self.assertNotIn("Sg", text)
+        self.assertNotIn("Pl", text)
+        self.assertIn(f"{TEXTUTIL.TABLE_RS}table ", text)
+        self.assertIn("f=C", text)
+        self.assertIn(TEXTUTIL.TABLE_END_LINE, text)
+        self.assertNotIn("+", text)
+        cell_rows = [ln for ln in text.splitlines() if TEXTUTIL.CELL_US in ln]
+        self.assertEqual(len(cell_rows), 3)
+        self.assertIn("1", cell_rows[0])
+        self.assertIn("3", cell_rows[2])
 
     def test_html_table(self):
         html = """
@@ -145,7 +207,10 @@ class XfdConverterTests(unittest.TestCase):
         text = TEXTUTIL.to_device_text(html)
         self.assertIn("εἰμί", text)
         self.assertIn("ἐσμέν", text)
-        self.assertIn("Sg", text)
+        self.assertNotIn("Sg", text)
+        self.assertNotIn("+", text)
+        self.assertIn(f"{TEXTUTIL.TABLE_RS}table ", text)
+        self.assertIn("f=C", text)
         self.assertNotIn("<table", text.lower())
 
     def test_html_lists(self):
@@ -178,11 +243,19 @@ class XfdConverterTests(unittest.TestCase):
         ]
         laid = TEXTUTIL.format_table(rows, width_budget=42)
         lines = laid.splitlines()
-        self.assertGreaterEqual(len(lines), 3)
-        self.assertIn("Sg", lines[0])
-        self.assertTrue(set(lines[1]) <= {"-"})
+        # Conjugation: vector block with person data rows only.
+        self.assertTrue(lines[0].startswith(f"{TEXTUTIL.TABLE_RS}table "))
+        self.assertIn("f=C", lines[0])
+        self.assertEqual(lines[-1], TEXTUTIL.TABLE_END_LINE)
+        cell_rows = [ln for ln in lines if TEXTUTIL.CELL_US in ln]
+        self.assertEqual(len(cell_rows), 2)
+        self.assertNotIn("Sg", laid)
+        self.assertNotIn("Pl", laid)
+        self.assertNotIn("+", laid)
         self.assertIn("λύω", laid)
         self.assertIn("λύομεν", laid)
+        self.assertIn("1", cell_rows[0])
+        self.assertIn("2", cell_rows[1])
 
     def test_plain_text_alias_uses_xfd(self):
         text = TEXTUTIL.plain_text("- Regel **A**")
@@ -190,12 +263,17 @@ class XfdConverterTests(unittest.TestCase):
 
     def test_field_map_converts_markdown(self):
         fields = TEXTUTIL.field_map_from_pairs(
-            [("Front", "## Titel\n\n| a | b |\n| - | - |\n| 1 | 2 |")]
+            [("Front", "## Titel\n\n| a | b |\n| - | - |\n| x | y |")]
         )
         self.assertIn("Front", fields)
         self.assertIn("Titel", fields["Front"])
-        self.assertIn("1", fields["Front"])
-        self.assertNotIn("|", fields["Front"])
+        self.assertIn("x", fields["Front"])
+        # Generic (non-conjugation) 2-col → vector block with header flag.
+        self.assertIn(f"{TEXTUTIL.TABLE_RS}table ", fields["Front"])
+        self.assertIn("f=H", fields["Front"])
+        self.assertIn(TEXTUTIL.CELL_US, fields["Front"])
+        self.assertNotIn("| - |", fields["Front"])
+        self.assertNotIn("+", fields["Front"])
 
     def test_limit_still_applies(self):
         text = TEXTUTIL.to_device_text("x" * 100, limit=20)

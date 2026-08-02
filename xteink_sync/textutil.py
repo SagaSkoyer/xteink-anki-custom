@@ -20,9 +20,52 @@ EMPTY_SIDE_PLACEHOLDER = "[…]"
 BOLD_ON = "\x02"
 BOLD_OFF = "\x03"
 
+# Vector table block markers (X4 draws 1px grid; not shown as glyphs).
+# Must NOT be Python splitlines() boundaries (\x1c–\x1e break str.splitlines).
+# Wire format (one table):
+#   \x04table c=<cols> r=<rows> f=<flags>\n
+#   cell\x06cell\x06...\n   (r times)
+#   \x04/table\n
+# flags: C=conjugation (no outer box), H=header row (rule under first row),
+#        empty/B=simple box with light rules.
+TABLE_RS = "\x04"  # EOT — block marker
+CELL_US = "\x06"  # ACK — cell separator
+TABLE_START_PREFIX = f"{TABLE_RS}table "
+TABLE_END_LINE = f"{TABLE_RS}/table"
+
+# Vector figure blocks (stem / stress / timeline) — same RS, drawn with drawLine.
+# Wire (stem):
+#   \x04fig t=stem\n
+#   stem\x06ending\x06result\n
+#   \x04/fig\n
+# Wire (stress): s=0-based stress index
+#   \x04fig t=stress s=2\n
+#   syl0\x06syl1\x06…\n
+#   \x04/fig\n
+# Wire (timeline): m=0-based marker index; optional 2nd line = event label
+#   \x04fig t=timeline m=1\n
+#   lab0\x06lab1\x06lab2\n
+#   Aorist?\n
+#   \x04/fig\n
+FIG_START_PREFIX = f"{TABLE_RS}fig "
+FIG_END_LINE = f"{TABLE_RS}/fig"
+MAX_FIG_CELLS = 8
+
 # Layout budgets for e-ink (character columns, not pixels).
+#
+# Device font scale (Anki settings) multiplies glyph advance:
+#   1 = klein  1.0× (UI_12)
+#   2 = mittel native UI_18 @ 1×
+#   3 = groß   UI_12 @ 2×
+# Content width ≈ screen − 2×(sidePad 20 + 4) → portrait ~432px, landscape ~752px.
+# Conversion runs on the Mac without the device scale → always target **groß+portrait**
+# so table lines never wrap (wrap destroys ASCII / vector row structure on the X4).
 MAX_TABLE_COLUMNS = 4
-DEFAULT_WIDTH_BUDGET = 42
+MAX_TABLE_ROWS = 12
+WIDTH_BUDGET_SMALL = 50   # klein 1×, portrait (comfortable)
+WIDTH_BUDGET_MEDIUM = 36  # mittel ~1.5×, portrait
+WIDTH_BUDGET_LARGE = 26   # groß 2×, portrait (~27 cols usable; stay under)
+DEFAULT_WIDTH_BUDGET = WIDTH_BUDGET_LARGE
 COL_GAP = 2
 
 _BOLD_OPEN_TAG_RE = re.compile(r"<(?:b|strong)\b[^>]*>", flags=re.IGNORECASE)
@@ -124,6 +167,14 @@ def strip_style_markers(text: str) -> str:
     return text.replace(BOLD_ON, "").replace(BOLD_OFF, "")
 
 
+def strip_table_markers(text: str) -> str:
+    """Remove vector-table control chars (for tests / plain previews)."""
+
+    if not text:
+        return ""
+    return text.replace(TABLE_RS, "").replace(CELL_US, " | ")
+
+
 def _display_width(text: str) -> int:
     """Approximate glyph columns (markers have zero width)."""
 
@@ -179,9 +230,25 @@ def _apply_inline_styles(text: str) -> str:
 
 def _compact_blank_lines(text: str) -> str:
     # Do not .strip() away style markers at line edges; only trim spaces/tabs.
-    lines = [re.sub(r"[ \t]+", " ", line).strip(" \t") for line in text.split("\n")]
+    # ASCII box table lines must keep internal padding for column alignment.
+    # Vector table blocks (\x04…) and cell rows with \x06 must stay intact.
+    # Stacked table indents ("  Key: value") must keep leading spaces.
     compact: List[str] = []
-    for line in lines:
+    for raw in text.split("\n"):
+        if raw.startswith(TABLE_RS) or CELL_US in raw:
+            # Table block header/end or cell row — keep as-is (rstrip only).
+            line = raw.rstrip(" \t")
+        elif raw.startswith("+") or raw.startswith("|"):
+            # Keep internal spaces; only rstrip trailing pad noise.
+            line = raw.rstrip(" \t")
+        elif raw.startswith("  ") or raw.startswith("\t"):
+            # Preserve indent; collapse only internal runs after the indent.
+            indent_len = len(raw) - len(raw.lstrip(" \t"))
+            indent = raw[:indent_len]
+            rest = re.sub(r"[ \t]+", " ", raw[indent_len:]).strip(" \t")
+            line = (indent + rest) if rest else ""
+        else:
+            line = re.sub(r"[ \t]+", " ", raw).strip(" \t")
         if line:
             compact.append(line)
         elif compact and compact[-1]:
@@ -213,6 +280,190 @@ def _inline_to_text(fragment: str) -> str:
     return text
 
 
+# Canonical 3rd-person pronoun short forms (match greek-anki-helper XFD).
+PRONOUN_3SG_SHORT = "αυτός/ή/ό"
+PRONOUN_3PL_SHORT = "αυτοί/ές/ά"
+_PRONOUN_3PL_LONG_RE = re.compile(
+    r"αυτο[ίι]\s*(?:/|,|·)\s*αυτ[έε]ς\s*(?:/|,|·)\s*αυτ[άα]"
+    r"|αυτοι\s*(?:/|,|·)\s*αυτες\s*(?:/|,|·)\s*αυτα"
+)
+_PRONOUN_3SG_LONG_RE = re.compile(
+    r"αυτ[οό]ς\s*(?:/|,|·)\s*αυτ[ήη]\s*(?:/|,|·)\s*αυτ[οό](?![ίιηήέε])"
+    r"|αυτος\s*(?:/|,|·)\s*αυτη\s*(?:/|,|·)\s*αυτο(?![ίι])"
+)
+_PRONOUN_3SG_MID_RE = re.compile(
+    r"αυτ[οό]ς\s*/\s*αυτ[ήη]\s*/\s*[οό]"
+    r"|αυτ[οό]ς\s*/\s*[ήη]\s*/\s*αυτ[οό]"
+)
+_PRONOUN_3PL_MID_RE = re.compile(
+    r"αυτο[ίι]\s*/\s*αυτ[έε]ς\s*/\s*[άα]"
+    r"|αυτο[ίι]\s*/\s*[έε]ς\s*/\s*αυτ[άα]"
+)
+
+
+# UI_12 / UI_18: no Unicode arrows (missing glyph / blank box on X4).
+# Leave list bullets (•) and em dashes alone — other code paths / fonts use them.
+_DEVICE_ARROW_MAP = str.maketrans({
+    "\u2192": ">",  # →
+    "\u2190": "<",  # ←
+    "\u21d2": ">",  # ⇒
+    "\u21d0": "<",  # ⇐
+    "\u27f6": ">",  # ⟶
+    "\u2794": ">",  # ➔
+    "\u279c": ">",  # ➜
+    "\u27a1": ">",  # ➡
+})
+
+
+def _normalize_device_punctuation(text: str) -> str:
+    """Replace arrow glyphs missing from X4 UI fonts (blank box otherwise)."""
+    if not text:
+        return text
+    return text.translate(_DEVICE_ARROW_MAP)
+
+
+def normalize_pronoun_short_forms(text: str) -> str:
+    """Map verbose 3rd-person pronoun lists to αυτός/ή/ό and αυτοί/ές/ά."""
+    if not text:
+        return text
+    out = str(text)
+    out = _PRONOUN_3PL_LONG_RE.sub(PRONOUN_3PL_SHORT, out)
+    out = _PRONOUN_3PL_MID_RE.sub(PRONOUN_3PL_SHORT, out)
+    out = _PRONOUN_3SG_LONG_RE.sub(PRONOUN_3SG_SHORT, out)
+    out = _PRONOUN_3SG_MID_RE.sub(PRONOUN_3SG_SHORT, out)
+    return out
+
+
+_PERSON_HEADER_RE = re.compile(
+    r"^(person|person\s*form|pers\.?|pronoun|pron\.?)$",
+    flags=re.IGNORECASE,
+)
+_PERSON_LABEL_RE = re.compile(
+    r"^(?:1(?:st)?|2(?:nd)?|3(?:rd)?|first|second|third|"
+    r"εγώ|εσύ|αυτός|αυτή|αυτό|εμείς|εσείς|αυτοί|αυτές|αυτά)"
+    r"(?:\s|/|\.|$)",
+    flags=re.IGNORECASE,
+)
+
+
+def _strip_person_column(rows: List[List[str]]) -> List[List[str]]:
+    """Drop a leading Person/pronoun column from conjugation-style tables.
+
+    Keeps a short 1/2/3 corner label when the Person cell encodes person number;
+    otherwise removes the column entirely (Sg|Pl grids need no Person form).
+    """
+    if not rows or not rows[0]:
+        return rows
+    header0 = strip_style_markers(rows[0][0] or "").strip()
+    body = rows[1:] if len(rows) > 1 else []
+    looks_person = bool(_PERSON_HEADER_RE.match(header0))
+    if not looks_person and body:
+        looks_person = sum(
+            1
+            for r in body
+            if r and _PERSON_LABEL_RE.match(strip_style_markers(r[0] or "").strip())
+        ) >= max(2, len(body) // 2)
+    if not looks_person or max(len(r) for r in rows) < 2:
+        return rows
+
+    def person_number(cell: str) -> str:
+        """Map Person cell → '1'|'2'|'3'."""
+        t = strip_style_markers(cell or "").strip().lower()
+        if re.match(r"^(1|1st|first)\b", t):
+            return "1"
+        if re.match(r"^(2|2nd|second)\b", t):
+            return "2"
+        if re.match(r"^(3|3rd|third)\b", t):
+            return "3"
+        # Greek / romanized pronouns
+        if t.startswith("εγ") or t.startswith("eg") or "εμεί" in t or t.startswith("εμει") or "eme" in t:
+            return "1"
+        if (
+            t.startswith("εσύ")
+            or t.startswith("εσυ")
+            or t.startswith("εσε")
+            or t.startswith("esy")
+            or t.startswith("ese")
+            or "εσεί" in t
+            or t.startswith("εσει")
+        ):
+            return "2"
+        if t.startswith("αυτ") or t.startswith("aut"):
+            return "3"
+        return ""
+
+    def person_number_slot(cell: str) -> tuple[str, str]:
+        """Return (person '1'|'2'|'3', number 'sg'|'pl'|'')."""
+        t = strip_style_markers(cell or "").strip().lower()
+        person = person_number(cell)
+        number = ""
+        if re.search(r"\b(pl|plur|plural)\b", t) or any(
+            x in t
+            for x in (
+                "εμείς",
+                "εμεις",
+                "εσείς",
+                "εσεις",
+                "αυτοί",
+                "αυτοι",
+                "αυτές",
+                "αυτες",
+                "αυτά",
+                "αυτα",
+                "emeis",
+                "eseis",
+            )
+        ):
+            number = "pl"
+        elif re.search(r"\b(sg|sing|singular)\b", t) or person:
+            # pronoun defaults: εγώ/εσύ/αυτός = sg unless plural form matched above
+            if person and number != "pl":
+                number = "sg"
+        return person, number
+
+    # | Person | Form | (2 cols, often 6 pronoun rows) → classic | | Sg | Pl |
+    if max(len(r) for r in rows) == 2:
+        grid = {"1": {"sg": "", "pl": ""}, "2": {"sg": "", "pl": ""}, "3": {"sg": "", "pl": ""}}
+        filled = False
+        for r in body:
+            person, number = person_number_slot(r[0] if r else "")
+            form = strip_style_markers(r[1] if len(r) > 1 else "").strip()
+            if person and number and form:
+                grid[person][number] = form
+                filled = True
+        if filled:
+            return [
+                ["", "Sg", "Pl"],
+                ["1", grid["1"]["sg"], grid["1"]["pl"]],
+                ["2", grid["2"]["sg"], grid["2"]["pl"]],
+                ["3", grid["3"]["sg"], grid["3"]["pl"]],
+            ]
+        # Fallback: sequential 1..n + form (no pronouns).
+        out = [["", "Form"]]
+        for index, r in enumerate(body, start=1):
+            form = strip_style_markers(r[1] if len(r) > 1 else "").strip()
+            out.append([str(index), form])
+        return out
+
+    # | Person | Sg | Pl | … → empty corner + short 1/2/3 labels
+    new_header = [""] + [strip_style_markers(c or "").strip() for c in rows[0][1:]]
+    for i, c in enumerate(list(new_header)):
+        cl = c.lower()
+        if cl in ("singular", "sing.", "sing"):
+            new_header[i] = "Sg"
+        elif cl in ("plural", "plur.", "plur"):
+            new_header[i] = "Pl"
+    out = [new_header]
+    for r in body:
+        cells = list(r) + [""] * (len(new_header) - len(r) + 1)
+        label = person_number(cells[0])
+        out.append(
+            [label]
+            + [strip_style_markers(c or "").strip() for c in cells[1 : len(new_header)]]
+        )
+    return out
+
+
 def _normalize_rows(rows: List[List[str]]) -> List[List[str]]:
     if not rows:
         return []
@@ -226,11 +477,41 @@ def _normalize_rows(rows: List[List[str]]) -> List[List[str]]:
         normalized = [r[:ncols] for r in normalized]
     # Drop fully empty rows (except keep a single empty edge case as nothing).
     normalized = [r for r in normalized if any((c or "").strip() for c in r)]
+    # Conjugation tables: no Person/pronoun column on the e-ink.
+    normalized = _strip_person_column(normalized)
+    # Re-normalize widths after a possible column drop.
+    if normalized:
+        ncols = max(len(r) for r in normalized)
+        normalized = [list(r) + [""] * (ncols - len(r)) for r in normalized]
     return normalized
 
 
-def _format_table_stacked(rows: List[List[str]]) -> str:
-    """Wide tables: label + 'Header: value' lines (never silent crop)."""
+def _forward_fill_rows(rows: List[List[str]]) -> List[List[str]]:
+    """Fill empty leading cells from the previous row (rowspan-style grammar tables)."""
+
+    if not rows:
+        return rows
+    filled: List[List[str]] = []
+    prev: List[str] = []
+    for row in rows:
+        out = list(row)
+        if prev:
+            for index, cell in enumerate(out):
+                if (cell or "").strip():
+                    break
+                if index < len(prev) and (prev[index] or "").strip():
+                    out[index] = prev[index]
+        filled.append(out)
+        prev = out
+    return filled
+
+
+def _format_table_stacked(rows: List[List[str]], width_budget: int = DEFAULT_WIDTH_BUDGET) -> str:
+    """Wide tables: label + 'Header: value' lines (never silent crop).
+
+    Empty first cells keep the previous section (no forward-fill labels).
+    Long 'Key: value' lines split so groß/portrait does not wrap mid-token.
+    """
 
     if not rows:
         return ""
@@ -238,6 +519,36 @@ def _format_table_stacked(rows: List[List[str]]) -> str:
     body = rows[1:] if len(rows) > 1 else rows
     use_header = len(rows) > 1
     lines: List[str] = []
+    # Leave room for 2-space indent on detail lines.
+    detail_budget = max(12, width_budget - 2)
+
+    def add_detail(key: str, cell: str) -> None:
+        if key and cell:
+            one = f"  {key}: {cell}"
+            if len(one) <= width_budget:
+                lines.append(one)
+            else:
+                lines.append(f"  {key}:")
+                # Value on next line; soft-break only on spaces/commas.
+                val = cell
+                while val:
+                    if len(val) <= detail_budget:
+                        lines.append(f"  {val}")
+                        break
+                    window = val[: detail_budget + 1]
+                    br = max(window.rfind(" "), window.rfind(","))
+                    if br <= 0:
+                        lines.append(f"  {val[:detail_budget]}")
+                        val = val[detail_budget:].lstrip(" ")
+                    else:
+                        chunk = val[: br + (1 if val[br] == "," else 0)].rstrip()
+                        lines.append(f"  {chunk}")
+                        val = val[br + 1 :].lstrip(" ")
+        elif key:
+            lines.append(f"  {key}:")
+        elif cell:
+            lines.append(f"  {cell}")
+
     for row in body:
         label = (row[0] or "").strip()
         if label:
@@ -248,11 +559,406 @@ def _format_table_stacked(rows: List[List[str]]) -> str:
             if not cell and use_header:
                 continue
             if use_header and index < len(header) and (header[index] or "").strip():
-                key = header[index].strip()
-                lines.append(f"  {key}: {cell}" if cell else f"  {key}:")
+                add_detail(header[index].strip(), cell)
             elif cell:
-                lines.append(f"  {cell}")
+                add_detail("", cell)
     return "\n".join(lines)
+
+
+def _format_table_compact(rows: List[List[str]], width_budget: int) -> str:
+    """Readable multi-column rows without monospace box alignment.
+
+    Prefers short space-separated lines (fit groß/portrait). Falls back to
+    ' · ' separators only when every line still fits the budget.
+
+    Example (forward-filled gender)::
+
+        Masc. Sing. ὁ -ος, -ης, -ευς
+        Masc. Plur. οἱ -οι, -ες
+    """
+
+    if not rows:
+        return ""
+    header = rows[0]
+    body = rows[1:] if len(rows) > 1 else []
+    use_header = bool(body)
+    data = body if use_header else rows
+    if data:
+        data = _forward_fill_rows(data)
+
+    def parts_of(row: Sequence[str]) -> List[str]:
+        parts = [(c or "").strip() for c in row]
+        while parts and not parts[-1]:
+            parts.pop()
+        return parts
+
+    def join_spaced(row: Sequence[str]) -> str:
+        return " ".join(parts_of(row))
+
+    def join_dot(row: Sequence[str]) -> str:
+        return " · ".join(parts_of(row))
+
+    def join_spaced_tight_commas(row: Sequence[str]) -> str:
+        """Like space-join but compress ', ' → ',' in cells (saves cols on endings)."""
+        parts = [p.replace(", ", ",") for p in parts_of(row)]
+        return " ".join(parts)
+
+    def split_last_col(row: Sequence[str]) -> List[str]:
+        """Lead columns on line 1, last column indented on line 2 (groß-safe)."""
+        parts = parts_of(row)
+        if len(parts) < 2:
+            return [" ".join(parts)] if parts else []
+        head = " ".join(parts[:-1])
+        tail = parts[-1]
+        return [head, f"  {tail}"]
+
+    # Try densest forms first. Long headers are optional (omit when over budget).
+    candidates: List[List[str]] = []
+    for joiner in (join_spaced_tight_commas, join_spaced, join_dot):
+        data_lines = [joiner(row) for row in data]
+        if use_header:
+            head = joiner(header)
+            if len(head) <= width_budget:
+                candidates.append([head] + data_lines)
+            candidates.append(data_lines)
+        else:
+            candidates.append(data_lines)
+
+    # Two-line rows (last column alone) — still compact, fits 2× portrait.
+    split_lines: List[str] = []
+    for row in data:
+        split_lines.extend(split_last_col(row))
+    candidates.append(split_lines)
+
+    def max_len(lines: List[str]) -> int:
+        return max((len(line) for line in lines), default=0)
+
+    for lines in candidates:
+        if lines and max_len(lines) <= width_budget:
+            return "\n".join(lines)
+    for lines in candidates:
+        if lines and max_len(lines) <= width_budget + 2:
+            return "\n".join(lines)
+    return ""
+
+
+def _pad_cell(cell: str, width: int) -> str:
+    """Right-pad cell to *width* display columns (bold markers = zero width)."""
+
+    cell = cell or ""
+    pad = width - _display_width(cell)
+    if pad > 0:
+        return cell + (" " * pad)
+    if pad < 0:
+        # Truncate visible run; keep style markers intact by stripping for cut.
+        visible = strip_style_markers(cell)
+        cut = max(1, width - 1)
+        # Prefer simple prefix when no markers.
+        if cell == visible:
+            return visible[:cut] + "…"
+        # With markers: clamp to width on visible text and re-wrap loosely.
+        return _clamp(visible, width)
+    return cell
+
+
+def _table_line_width(widths: Sequence[int], pad: int = 1) -> int:
+    """Outer width of an ASCII box row: | p cell p | … |"""
+
+    ncols = len(widths)
+    if ncols == 0:
+        return 0
+    # each cell: pad + content + pad; plus (ncols + 1) vertical bars
+    return sum(w + 2 * pad for w in widths) + (ncols + 1)
+
+
+def _conjugation_body_rows(rows: List[List[str]]) -> List[List[str]] | None:
+    """If *rows* is a 1/2/3 paradigm, return body only (no Sg/Pl header).
+
+    Conjugation tables on the e-ink omit the header row and all ``+---+`` /
+    ``|---|`` rule lines — only the person rows remain.
+    """
+
+    if not rows:
+        return None
+
+    def cell0(row: Sequence[str]) -> str:
+        return strip_style_markers((row[0] if row else "") or "").strip()
+
+    def is_person_label(lab: str) -> bool:
+        return lab in ("1", "2", "3")
+
+    def header_looks_number_or_form(header: Sequence[str]) -> bool:
+        cells = [strip_style_markers((c or "")).strip().lower() for c in header]
+        if any(
+            h in ("sg", "pl", "singular", "plural", "form", "forms", "sing", "plur")
+            for h in cells
+        ):
+            return True
+        # empty corner + column labels (e.g. "", "Aorist", …) with person body
+        if cells and not cells[0]:
+            return True
+        if cells and cells[0] in ("person", "pers", "p", "pers."):
+            return True
+        return False
+
+    if len(rows) >= 2 and header_looks_number_or_form(rows[0]):
+        body = rows[1:]
+        labels = [cell0(r) for r in body]
+        person_n = sum(1 for lab in labels if is_person_label(lab))
+        if person_n >= 2 and person_n >= max(2, (len(labels) + 1) // 2):
+            return body
+
+    # Already body-only: rows labelled 1/2/3 with no Sg/Pl header.
+    labels = [cell0(r) for r in rows]
+    person_n = sum(1 for lab in labels if is_person_label(lab))
+    if (
+        person_n >= 2
+        and person_n == len(labels)
+        and max(len(r) for r in rows) >= 2
+    ):
+        return list(rows)
+    return None
+
+
+def _format_table_box(
+    rows: List[List[str]],
+    widths: List[int],
+    *,
+    cell_pad: int = 1,
+    rules: bool = True,
+) -> str:
+    """ASCII box table (legacy / debug — UI_12 has no Unicode box-drawing glyphs).
+
+    Prefer :func:`_emit_vector_table` for the X4 wire format. Kept for tests and
+    as a readable fallback when vector emission is disabled.
+    """
+
+    def rule() -> str:
+        parts = ["+"]
+        for width in widths:
+            parts.append("-" * (width + 2 * cell_pad))
+            parts.append("+")
+        return "".join(parts)
+
+    def data_row(row: Sequence[str]) -> str:
+        parts = ["|"]
+        for index, width in enumerate(widths):
+            cell = _pad_cell(row[index] if index < len(row) else "", width)
+            pad = " " * cell_pad
+            parts.append(pad)
+            parts.append(cell)
+            parts.append(pad)
+            parts.append("|")
+        return "".join(parts)
+
+    if not rules:
+        return "\n".join(data_row(row) for row in rows)
+
+    lines: List[str] = [rule(), data_row(rows[0]), rule()]
+    for row in rows[1:]:
+        lines.append(data_row(row))
+    if len(rows) > 1:
+        lines.append(rule())
+    return "\n".join(lines)
+
+
+def _emit_vector_table(rows: List[List[str]], flags: str = "") -> str:
+    """Emit an X4 vector-table block (device draws 1px grid, O(cols) RAM).
+
+    Cells are single-line; bold STX/ETX markers inside cells are preserved.
+    """
+
+    if not rows:
+        return ""
+    cols = max((len(row) for row in rows), default=0)
+    if cols < 1:
+        return ""
+    cols = min(cols, MAX_TABLE_COLUMNS)
+    nrows = min(len(rows), MAX_TABLE_ROWS)
+    flag = "".join(ch for ch in (flags or "") if ch in ("C", "H", "B"))
+    lines: List[str] = [f"{TABLE_RS}table c={cols} r={nrows} f={flag}"]
+    for row in rows[:nrows]:
+        cells: List[str] = []
+        for index in range(cols):
+            cell = row[index] if index < len(row) else ""
+            cell = (cell or "").replace("\r", " ").replace("\n", " ")
+            cell = cell.replace(CELL_US, " ").replace(TABLE_RS, "")
+            cells.append(cell)
+        lines.append(CELL_US.join(cells))
+    lines.append(TABLE_END_LINE)
+    return "\n".join(lines)
+
+
+def _clean_fig_cell(cell: str) -> str:
+    cell = (cell or "").replace("\r", " ").replace("\n", " ")
+    cell = cell.replace(CELL_US, " ").replace(TABLE_RS, "")
+    return cell.strip()
+
+
+def emit_fig_stem(stem: str, ending: str, result: str = "") -> str:
+    """Stem + ending > result boxes (X4 vector fig)."""
+    a, b, c = _clean_fig_cell(stem), _clean_fig_cell(ending), _clean_fig_cell(result)
+    if not a and not b:
+        return ""
+    if not c and a and b:
+        c = f"{a}{b}"
+    body = CELL_US.join([a, b, c])
+    return f"{TABLE_RS}fig t=stem\n{body}\n{FIG_END_LINE}"
+
+
+def emit_fig_stress(syllables: Sequence[str], stress_index: int = 0) -> str:
+    """Syllable boxes with stress mark on stress_index (0-based)."""
+    cells = [_clean_fig_cell(s) for s in syllables if _clean_fig_cell(s)]
+    if not cells:
+        return ""
+    cells = cells[:MAX_FIG_CELLS]
+    idx = max(0, min(int(stress_index), len(cells) - 1))
+    body = CELL_US.join(cells)
+    return f"{TABLE_RS}fig t=stress s={idx}\n{body}\n{FIG_END_LINE}"
+
+
+def emit_fig_timeline(
+    labels: Sequence[str],
+    marker_index: int = 0,
+    event: str = "",
+) -> str:
+    """Horizontal timeline with tick labels and optional event above the marker."""
+    cells = [_clean_fig_cell(s) for s in labels if _clean_fig_cell(s)]
+    if len(cells) < 2:
+        return ""
+    cells = cells[:MAX_FIG_CELLS]
+    idx = max(0, min(int(marker_index), len(cells) - 1))
+    lines = [
+        f"{TABLE_RS}fig t=timeline m={idx}",
+        CELL_US.join(cells),
+    ]
+    ev = _clean_fig_cell(event)
+    if ev:
+        lines.append(ev)
+    lines.append(FIG_END_LINE)
+    return "\n".join(lines)
+
+
+# Authoring shortcuts → vector figs (converted on pull).
+#   [fig:stem|λυ-|-ω|λύω]
+#   [fig:stress:2|κα|λη|μέ|ρα]
+#   [fig:timeline:1|Verg.|Jetzt|Zukunft|Aorist?]
+_FIG_BRACKET_RE = re.compile(
+    r"\[fig:(stem|stress|timeline)(?::(\d+))?\|([^\]]+)\]",
+    flags=re.IGNORECASE,
+)
+# Fenced:
+#   ```fig stem
+#   λυ- | -ω | λύω
+#   ```
+_FIG_FENCE_RE = re.compile(
+    r"```fig[ \t]+(stem|stress|timeline)(?:[ \t]+(\d+))?[ \t]*\n(.*?)```",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+
+def _parts_from_fig_body(body: str) -> List[str]:
+    raw = (body or "").strip()
+    if "|" in raw:
+        return [_clean_fig_cell(p) for p in raw.split("|") if _clean_fig_cell(p)]
+    # whitespace / newlines
+    parts: List[str] = []
+    for line in raw.replace("\r", "\n").split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if "|" in line:
+            parts.extend(_clean_fig_cell(p) for p in line.split("|") if _clean_fig_cell(p))
+        else:
+            parts.append(_clean_fig_cell(line))
+    return [p for p in parts if p]
+
+
+def _fig_from_type(kind: str, index: int | None, parts: List[str]) -> str:
+    kind = (kind or "").lower()
+    if kind == "stem":
+        while len(parts) < 3:
+            parts.append("")
+        return emit_fig_stem(parts[0], parts[1], parts[2] if len(parts) > 2 else "")
+    if kind == "stress":
+        idx = 0 if index is None else index
+        return emit_fig_stress(parts, idx)
+    if kind == "timeline":
+        idx = 0 if index is None else index
+        # last part may be event label if more labels than needed — if 4+ parts,
+        # treat last as event when index was given and len>3.
+        event = ""
+        labels = parts
+        if len(parts) >= 4:
+            event = parts[-1]
+            labels = parts[:-1]
+        return emit_fig_timeline(labels, idx, event)
+    return ""
+
+
+def expand_fig_shortcuts(text: str) -> str:
+    """Turn [fig:…] and ```fig …``` authoring into \\x04fig wire blocks."""
+    if not text:
+        return text
+
+    def repl_bracket(m: re.Match[str]) -> str:
+        kind = m.group(1)
+        idx = int(m.group(2)) if m.group(2) is not None else None
+        parts = _parts_from_fig_body(m.group(3))
+        return _fig_from_type(kind, idx, parts) or m.group(0)
+
+    def repl_fence(m: re.Match[str]) -> str:
+        kind = m.group(1)
+        idx = int(m.group(2)) if m.group(2) is not None else None
+        parts = _parts_from_fig_body(m.group(3))
+        # stress/timeline: first number may also be first line
+        return _fig_from_type(kind, idx, parts) or m.group(0)
+
+    text = _FIG_FENCE_RE.sub(repl_fence, text)
+    text = _FIG_BRACKET_RE.sub(repl_bracket, text)
+    return text
+
+
+def _cells_are_single_line(rows: Sequence[Sequence[str]]) -> bool:
+    for row in rows:
+        for cell in row:
+            if cell and ("\n" in cell or "\r" in cell):
+                return False
+    return True
+
+
+def _shrink_widths_to_budget(
+    widths: List[int],
+    width_budget: int,
+    *,
+    cell_pad: int,
+    min_widths: Sequence[int],
+) -> List[int] | None:
+    """Shrink columns until the box fits, never below per-column min_widths."""
+
+    widths = list(widths)
+    mins = list(min_widths)
+    if len(mins) < len(widths):
+        mins = mins + [1] * (len(widths) - len(mins))
+    total = _table_line_width(widths, pad=cell_pad)
+    if total <= width_budget:
+        return widths
+    overflow = total - width_budget
+    while overflow > 0:
+        order = sorted(range(len(widths)), key=lambda i: widths[i], reverse=True)
+        progressed = False
+        for index in order:
+            floor = max(1, mins[index])
+            if widths[index] <= floor:
+                continue
+            widths[index] -= 1
+            overflow -= 1
+            progressed = True
+            if overflow <= 0:
+                break
+        if not progressed:
+            return None
+    return widths
 
 
 def format_table(
@@ -260,48 +966,95 @@ def format_table(
     width_budget: int = DEFAULT_WIDTH_BUDGET,
     max_columns: int = MAX_TABLE_COLUMNS,
 ) -> str:
-    """Layout a table as fixed columns or stacked key/value lines."""
+    """Layout a table as a vector block, compact rows, or stacked key/value lines.
+
+    When the grid fits the width budget (2–4 cols, ≤12 single-line rows), emit an
+    X4 **vector table** block (``\\x04table …``). The device measures cells in
+    pixels and draws 1px rules — no ASCII ``+---+`` chrome on the wire.
+
+    Wide tables become compact or stacked short lines so the device never wraps
+    mid-row (wrap destroys table structure).
+
+    Conjugation paradigms (1/2/3 × Sg|Pl) drop the header row; flag ``C`` omits
+    the outer box on the device.
+    """
 
     normalized = _normalize_rows(rows)
     if not normalized:
         return ""
 
-    ncols = len(normalized[0])
-    if ncols > max_columns:
-        return _format_table_stacked(normalized)
+    # Resolve **bold** / HTML emphasis before measuring columns so padding
+    # matches what the device draws (markers are zero-width).
+    normalized = [
+        [_apply_inline_styles(cell) if cell else "" for cell in row]
+        for row in normalized
+    ]
 
-    widths = [0] * ncols
-    for row in normalized:
+    conj_body = _conjugation_body_rows(normalized)
+    # Conjugation: render body only (no Sg/Pl header).
+    display = conj_body if conj_body is not None else normalized
+    is_conjugation = conj_body is not None
+
+    ncols = len(display[0])
+    if ncols > max_columns or len(display) > MAX_TABLE_ROWS:
+        return _format_table_stacked(
+            normalized if not is_conjugation else display, width_budget=width_budget
+        )
+
+    if not _cells_are_single_line(display):
+        return _format_table_stacked(
+            normalized if not is_conjugation else display, width_budget=width_budget
+        )
+
+    natural: List[int] = [0] * ncols
+    for row in display:
         for index, cell in enumerate(row):
-            widths[index] = max(widths[index], _display_width(cell or ""))
+            natural[index] = max(natural[index], _display_width(cell or ""))
 
     # Ensure at least 1 column width for empty header corner cells.
-    widths = [max(w, 1) if any(r[i] for r in normalized) else max(w, 0) for i, w in enumerate(widths)]
-    for index, width in enumerate(widths):
+    natural = [
+        max(w, 1) if any(r[i] for r in display) else max(w, 0)
+        for i, w in enumerate(natural)
+    ]
+    for index, width in enumerate(natural):
         if width == 0:
-            widths[index] = 1
+            natural[index] = 1
 
-    total = sum(widths) + COL_GAP * max(0, ncols - 1)
-    if total > width_budget and ncols > 2:
-        # Prefer stacked over unreadable squash for grammar tables.
-        return _format_table_stacked(normalized)
+    # Vector grid when cells fit without aggressive truncation (same budget as
+    # the old padded ASCII box). Mild shrink: long cols may lose ≤2 glyphs.
+    mild_mins = [max(1, w - 2) if w > 6 else w for w in natural]
+    widths = _shrink_widths_to_budget(
+        natural, width_budget, cell_pad=1, min_widths=mild_mins
+    )
+    if widths is None and ncols <= 2:
+        widths = _shrink_widths_to_budget(
+            natural, width_budget, cell_pad=0, min_widths=mild_mins
+        )
+        if widths is None:
+            # 2-col last resort: still emit vector (device ellipsizes in px).
+            widths = list(natural)
 
-    gap = " " * COL_GAP
+    if widths is not None:
+        if is_conjugation:
+            flags = "C"
+        elif len(display) > 1:
+            flags = "H"
+        else:
+            flags = "B"
+        return _emit_vector_table(display, flags)
 
-    def fmt_row(row: Sequence[str]) -> str:
-        parts: List[str] = []
-        for index, cell in enumerate(row):
-            cell = cell or ""
-            pad = widths[index] - _display_width(cell)
-            parts.append(cell + (" " * max(0, pad)))
-        return gap.join(parts).rstrip()
+    # 3–4 columns that do not fit: compact short rows, else stacked.
+    if is_conjugation:
+        lines = [" ".join((c or "").strip() for c in row if (c or "").strip()) for row in display]
+        lines = [ln for ln in lines if ln]
+        if lines and max(len(ln) for ln in lines) <= width_budget:
+            return "\n".join(lines)
+        return _format_table_stacked(display, width_budget=width_budget)
 
-    lines = [fmt_row(normalized[0])]
-    rule_width = min(sum(widths) + COL_GAP * max(0, ncols - 1), width_budget)
-    lines.append("-" * max(3, rule_width))
-    for row in normalized[1:]:
-        lines.append(fmt_row(row))
-    return "\n".join(lines)
+    compact = _format_table_compact(normalized, width_budget=width_budget)
+    if compact:
+        return compact
+    return _format_table_stacked(normalized, width_budget=width_budget)
 
 
 def _parse_html_table(table_html: str) -> List[List[str]]:
@@ -503,6 +1256,10 @@ def to_device_text(
 
     text = str(source)
     text = _preprocess_media(text)
+    # Authoring shortcuts → vector figs before HTML/table layout.
+    text = expand_fig_shortcuts(text)
+    # Compact 3rd-person pronoun triples before layout (shorter cells/lines).
+    text = normalize_pronoun_short_forms(text)
     # Bold tags before table/list extraction so cells keep emphasis.
     text = _html_bold_tags_to_markers(text)
     text = _replace_html_tables(text, width_budget=width_budget)
@@ -521,6 +1278,9 @@ def to_device_text(
     # Markdown bold + code after block parse (lists/headings already handled).
     text = _md_bold_to_markers(text)
     text = _CODE_RE.sub(r"\1", text)
+    text = normalize_pronoun_short_forms(text)
+    # UI_12/UI_18 have no Unicode arrows / fancy dashes — rewrite before e-ink draw.
+    text = _normalize_device_punctuation(text)
     text = _compact_blank_lines(text)
     return _clamp(text, limit)
 
