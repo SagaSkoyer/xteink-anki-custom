@@ -1,3 +1,84 @@
+# v2.5.7 — flag gesture works on X4 hardware
+
+## Firmware
+
+- **Fix: Flag toggle broken** — Up+Down cannot be detected together (one ADC ladder).
+- **New gestures:**
+  - **Confirm + Up/Down** (chord), or
+  - **Long-press Up or Down ~0.55 s** (short press pages on release)
+- Flash required.
+
+# v2.5.6 — firmware version in Anki menu
+
+## Firmware
+
+- **Version visible in Anki:** header subtitle on **Anki menu** and **Anki settings**
+  (same pattern as CrossPoint Settings). Boot still shows it too.
+- Release string: **`1.4.1-anki-2.5.7`** (`CROSSPOINT_VERSION` / `XTEINK_ANKI_FW_VERSION`).
+- Flash required to see the label.
+
+# v2.5.5 — flag placement landscape/portrait
+
+## Firmware
+
+- **Flag layout** (approved mocks):
+  - **Landscape:** right of progress bar; flag top on bar bottom edge; above grades
+  - **Portrait:** right column; bar + deck name shift left; flag bottom-aligned with status
+- Flash required.
+
+# v2.5.4 — flag chord Up+Down + progress without Again/Hard requeues
+
+## Firmware
+
+- **Flag-Chord:** **Hoch + Runter** gleichzeitig (statt Page+Down) → Rotflag 0↔1
+- **Progress-Bar / Zähler:** nur Karten, die die Session verlassen (kein Requeue).
+  **Nochmal** und **Schwer** auf Lernkarten werden **nicht** als Fortschritt gezählt.
+- Flash required.
+
+# v2.5.3 — accept pull protocol v3
+
+## Firmware
+
+- Fix: **Unsupported or invalid Anki batch** when add-on sends `protocol_version: 3`
+  (flags release). Device now accepts pull meta **v2 and v3**.
+- Flash required if you already installed add-on 2.5.x.
+
+# v2.5.2 — offer mDNS search when Anki unreachable
+
+## Firmware
+
+- After **pull/push network failure**: dialog  
+  **„Anki nicht erreichbar“** —  
+  **Bestätigen** = Mac-Server per mDNS suchen und erneut versuchen;  
+  **Abbrechen** = Anki läuft (URL/Token prüfen, Netzwerk-Hinweis).
+- Shared helper `AnkiMdns::discoverServerUrl` (Settings + error path).
+- Flash required.
+
+# v2.5.1 — LAN mDNS discovery
+
+## Add-on + Firmware
+
+- Mac add-on advertises **`_xteink-anki._tcp`** on the configured **port** (default 5050)
+  - macOS: `dns-sd -R`; optional `zeroconf` package elsewhere
+  - Config: `mdns_enabled`, `mdns_name`, `port` — **token not published**
+- X4 **Anki → Anki-Einstellungen → Mac-Server suchen**: mDNS browse → writes `http://IP:port`
+- Token still entered manually (Auth)
+- Flash firmware + reload add-on 2.5.1
+
+# v2.5.0 — card flag toggle (Page + Down) + sync
+
+## Firmware + Mac add-on (**breaks old CSV-only push clients**)
+
+- **Chord:** side **Page** + **Down** together toggles Anki **red flag** (0 ↔ 1) on the current card
+- **UI:** solid mini flag **right of the progress bar** (bar shortens; no white inner line)
+- **Pull:** each card includes `"flag": 0–7` from Anki `card.flags`
+- **Push:** JSON only — `{"batch_id","reviews":[…],"flags":[{"card_id","flag"}]}`
+  - Flags-only upload allowed (empty `reviews`)
+  - Menu **Upload** shows when reviews **or** dirty flags are pending
+- Local dirty flags: `/.crosspoint/anki-flags.csv` (cleared on successful push / new pull)
+- Protocol version **3**; add-on **2.5.0**
+- Flash firmware + reinstall/reload add-on + re-pull cards
+
 # v2.4.11 — vector figures (stem / stress / timeline)
 
 ## Firmware + Mac converter

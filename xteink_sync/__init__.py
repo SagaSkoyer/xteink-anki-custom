@@ -33,6 +33,7 @@ from aqt.utils import showInfo
 
 from .protocol import (
     PULL_NDJSON_MIME,
+    FlagUpdate,
     ProtocolError,
     PushBatch,
     Review,
@@ -40,10 +41,11 @@ from .protocol import (
     parse_push_payload,
 )
 from . import textutil
+from .mdns_advertise import MdnsAdvertiser
 
 
-ADDON_VERSION = "2.4.0"
-PROTOCOL_VERSION = 2
+ADDON_VERSION = "2.5.1"
+PROTOCOL_VERSION = 3
 # Hard safety caps; config and pull query params are clamped to these.
 MAX_CARDS_PER_DECK_LIMIT = 1000
 MAX_TOTAL_PULL_CARDS_LIMIT = 1000
@@ -52,6 +54,9 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_CONFIG = {
     "bind_address": "0.0.0.0",
     "port": 5050,
+    # LAN discovery (mDNS/Bonjour): X4 can find this Mac without typing the IP.
+    "mdns_enabled": True,
+    "mdns_name": "Xteink Anki",
     "api_token": "",
     # Soft defaults; X4 may override per pull via ?max_cards=&max_total=
     "max_cards": 250,
@@ -591,6 +596,7 @@ class XteinkAddon:
         self.httpd = None  # type: Optional[XteinkHTTPServer]
         self.server_thread = None  # type: Optional[threading.Thread]
         self.start_error = ""
+        self._mdns = MdnsAdvertiser()
 
     def collection_ready(self) -> bool:
         return getattr(mw, "col", None) is not None
@@ -606,11 +612,13 @@ class XteinkAddon:
             try:
                 self.httpd = XteinkHTTPServer((address, port), self)
                 LOGGER.info("Xteink API listening on %s:%s", address, port)
+                self._start_mdns(port)
                 self.httpd.serve_forever(poll_interval=0.25)
             except Exception as error:
                 self.start_error = str(error)
                 LOGGER.exception("Could not start the Xteink API")
             finally:
+                self._mdns.stop()
                 if self.httpd:
                     self.httpd.server_close()
                 self.httpd = None
@@ -771,6 +779,13 @@ class XteinkAddon:
                     deck_key = str(home_deck_id)
                     # deck_id / deck_name first so embedded clients see titles even if a
                     # later field is dropped under memory pressure when parsing the line.
+                    try:
+                        card_flag = int(getattr(card, "flags", 0) or 0)
+                    except Exception:
+                        card_flag = 0
+                    if card_flag < 0 or card_flag > 7:
+                        card_flag = 0
+
                     payload.append(
                         {
                             "id": str(card_id),
@@ -778,6 +793,7 @@ class XteinkAddon:
                             "deck_name": display_name,
                             "front": front_text,
                             "back": back_text,
+                            "flag": card_flag,
                             "card_type": _CARD_TYPE_NAMES.get(card_type, "unknown"),
                             # Kept for compatibility with the original X4 client.
                             "is_learning": card_type
@@ -953,6 +969,29 @@ class XteinkAddon:
                         "index": index,
                         "card_id": str(review.card_id),
                         "error": str(error),
+                        "kind": "review",
+                    }
+                )
+
+        for index, flag_update in enumerate(batch.flags):
+            try:
+                changes = self._set_card_flag(collection, flag_update)
+                if changes is not None:
+                    try:
+                        aggregate_changes.MergeFrom(changes)
+                    except Exception:
+                        pass
+                processed += 1
+            except Exception as error:
+                LOGGER.exception(
+                    "Could not set Xteink flag on card %s", flag_update.card_id
+                )
+                rejected.append(
+                    {
+                        "index": index,
+                        "card_id": str(flag_update.card_id),
+                        "error": str(error),
+                        "kind": "flag",
                     }
                 )
 
@@ -961,6 +1000,27 @@ class XteinkAddon:
             processed=processed,
             rejected=rejected,
         )
+
+    def _set_card_flag(self, collection: Any, flag_update: FlagUpdate) -> Any:
+        """Set Anki user flag 0–7 on a card (0 clears)."""
+        flag = int(flag_update.flag)
+        if flag < 0 or flag > 7:
+            raise ValueError(f"flag must be 0–7, got {flag}")
+
+        # Prefer bulk helper when available (Anki 2.1.50+).
+        if hasattr(collection, "set_user_flag_for_cards"):
+            return collection.set_user_flag_for_cards(flag, [flag_update.card_id])
+
+        card = collection.get_card(flag_update.card_id)
+        if hasattr(card, "set_user_flag"):
+            card.set_user_flag(flag)
+        else:
+            card.flags = flag
+        if hasattr(collection, "update_card"):
+            return collection.update_card(card)
+        if hasattr(card, "flush"):
+            card.flush()
+        return OpChanges()
 
     def _answer_card(self, collection: Any, review: Review) -> OpChanges:
         card = collection.get_card(review.card_id)
@@ -1022,6 +1082,30 @@ class XteinkAddon:
         QTimer.singleShot(0, mw.on_sync_button_clicked)
         return True, "scheduled"
 
+    def _start_mdns(self, port: int) -> None:
+        enabled = bool(self.config.get("mdns_enabled", True))
+        name = str(self.config.get("mdns_name", "Xteink Anki") or "Xteink Anki")
+        try:
+            self._mdns.start(
+                port,
+                enabled=enabled,
+                instance_name=name,
+                protocol_version=PROTOCOL_VERSION,
+                addon_version=ADDON_VERSION,
+            )
+        except Exception:
+            LOGGER.exception("mDNS advertise failed")
+
+    def stop_server(self) -> None:
+        """Stop HTTP + mDNS (profile close / unload)."""
+        self._mdns.stop()
+        httpd = self.httpd
+        if httpd is not None:
+            try:
+                httpd.shutdown()
+            except Exception:
+                LOGGER.exception("Could not shut down Xteink HTTP server")
+
     def show_status(self) -> None:
         if self.start_error:
             message = _t("status_stopped", error=self.start_error)
@@ -1035,13 +1119,24 @@ class XteinkAddon:
                 if configured_address == "0.0.0.0" and addresses
                 else configured_address
             )
+            port = _int_config(self.config, "port")
             message = _t(
                 "status_running",
                 address=display_address,
-                port=_int_config(self.config, "port"),
+                port=port,
                 token=self.api_token,
                 ready=_t("yes") if self.collection_ready() else _t("no"),
             )
+            if self._mdns.active:
+                message += (
+                    f"\n\nmDNS: _xteink-anki._tcp  port {port}"
+                    f"  ({self._mdns.backend})"
+                )
+            elif bool(self.config.get("mdns_enabled", True)):
+                message += (
+                    "\n\nmDNS: not advertising "
+                    "(dns-sd/zeroconf unavailable — set server URL manually on X4)"
+                )
         showInfo(message, title=_t("status_title"))
 
 
@@ -1052,3 +1147,12 @@ qconnect(action.triggered, addon.show_status)
 mw.form.menuTools.addAction(action)
 
 gui_hooks.main_window_did_init.append(addon.start_server)
+
+
+def _xteink_stop_server() -> None:
+    addon.stop_server()
+
+
+# Unregister mDNS when Anki profile closes so stale LAN records disappear.
+if hasattr(gui_hooks, "profile_will_close"):
+    gui_hooks.profile_will_close.append(_xteink_stop_server)

@@ -10,12 +10,18 @@ else
 fi
 output_file="${repo_dir}/dist/crosspoint-1.4.1-xteink-anki.bin"
 
+# Resolve PlatformIO even when not on PATH (common: ~/.platformio/penv).
+platformio_command=()
 if command -v pio >/dev/null 2>&1; then
   platformio_command=(pio)
 elif command -v platformio >/dev/null 2>&1; then
   platformio_command=(platformio)
+elif [[ -x "${HOME}/.platformio/penv/bin/pio" ]]; then
+  platformio_command=("${HOME}/.platformio/penv/bin/pio")
+elif [[ -x "${HOME}/.platformio/penv/bin/platformio" ]]; then
+  platformio_command=("${HOME}/.platformio/penv/bin/platformio")
 else
-  printf 'PlatformIO/pioarduino was not found in PATH.\n' >&2
+  printf 'PlatformIO/pioarduino was not found in PATH or ~/.platformio/penv/bin.\n' >&2
   exit 1
 fi
 

@@ -167,6 +167,94 @@ def strip_style_markers(text: str) -> str:
     return text.replace(BOLD_ON, "").replace(BOLD_OFF, "")
 
 
+def _lemma_head_from_line(line: str) -> str:
+    """First-line lemma candidate: drop bold markers and trailing (pronunciation)."""
+
+    s = strip_style_markers(line or "").strip()
+    if not s:
+        return ""
+    # "**lemma**  (pron)" or "lemma  (pron)" after marker strip
+    s = re.sub(r"\s*\([^)]*\)\s*$", "", s).strip()
+    # Drop leading article for matching bare form too (handled by caller with both)
+    return re.sub(r"\s+", " ", s)
+
+
+def strip_memory_lemma_echo(text: str) -> str:
+    """On card backs, drop full lemma restated after ※ (already in the head line).
+
+    Example::
+        **πίνω**  (píno)
+
+        ※ πίνω ~ potion
+    becomes::
+        **πίνω**  (píno)
+
+        ※ ~ potion
+    """
+
+    if not text or "※" not in text:
+        return text or ""
+
+    lines = str(text).split("\n")
+    lemma = ""
+    for line in lines:
+        head = _lemma_head_from_line(line)
+        if head:
+            lemma = head
+            break
+    if len(lemma) < 2:
+        return text
+
+    bare = lemma
+    for art in ("ο ", "η ", "το ", "οι ", "αι ", "τα ", "Ο ", "Η ", "Το ", "Οι ", "Αι ", "Τα "):
+        if bare.startswith(art):
+            bare = bare[len(art) :].strip()
+            break
+    candidates = [lemma]
+    if bare and bare != lemma and len(bare) >= 2:
+        candidates.append(bare)
+
+    art_opt = r"(?:(?:ο|η|το|οι|αι|τα)\s+)?"
+    out: List[str] = []
+    for line in lines:
+        stripped = line.lstrip()
+        if not stripped.startswith("※"):
+            out.append(line)
+            continue
+        # Preserve indent + icon
+        m = re.match(r"^(\s*※\s*)(.*)$", line)
+        if not m:
+            out.append(line)
+            continue
+        prefix, body = m.group(1), m.group(2)
+        for word in candidates:
+            wp = re.escape(word).replace(r"\ ", r"\s+")
+            body = re.sub(
+                rf"^{art_opt}{wp}(?=\s|[~'\"(\-/>]|$)\s*",
+                "",
+                body,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            body = re.sub(
+                rf"\s*>\s*{art_opt}{wp}\b(?:\s*['\"][^'\"]{{0,40}}['\"])?\s*$",
+                "",
+                body,
+                flags=re.IGNORECASE,
+            )
+            body = re.sub(
+                rf"\b(?:related\s+to|as\s+in)\s+{art_opt}{wp}\b",
+                "",
+                body,
+                flags=re.IGNORECASE,
+            )
+        body = re.sub(r"\s{2,}", " ", body).strip()
+        if body.startswith("~"):
+            body = "~ " + body.lstrip("~").strip()
+        out.append(prefix + body if body else prefix.rstrip())
+    return "\n".join(out)
+
+
 def strip_table_markers(text: str) -> str:
     """Remove vector-table control chars (for tests / plain previews)."""
 
@@ -1282,6 +1370,8 @@ def to_device_text(
     # UI_12/UI_18 have no Unicode arrows / fancy dashes — rewrite before e-ink draw.
     text = _normalize_device_punctuation(text)
     text = _compact_blank_lines(text)
+    # Memory line (※ …) must not restate the lemma already shown above it.
+    text = strip_memory_lemma_echo(text)
     return _clamp(text, limit)
 
 

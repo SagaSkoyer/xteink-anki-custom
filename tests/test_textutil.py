@@ -38,6 +38,27 @@ class TextUtilTests(unittest.TestCase):
         self.assertIn("t=stem", out)
         self.assertIn("λύω", out)
 
+    def test_memory_line_strips_lemma_echo(self):
+        raw = (
+            f"{TEXTUTIL.BOLD_ON}πίνω{TEXTUTIL.BOLD_OFF}  (píno)\n"
+            "\n"
+            "※ πίνω ~ potion\n"
+        )
+        out = TEXTUTIL.strip_memory_lemma_echo(raw)
+        self.assertIn("※ ~ potion", out)
+        self.assertNotIn("※ πίνω", out)
+        # End-to-end through plain_text
+        html = "<b>παγωτό</b>  (pagotó)<br><br>※ παγώνω 'freeze' &gt; παγωτό 'ice cream'"
+        plain = TEXTUTIL.plain_text(html)
+        self.assertIn("※", plain)
+        self.assertIn("παγώνω", plain)
+        self.assertNotIn("※ παγωτό", plain)
+        # Stem fragment must stay
+        keep = TEXTUTIL.strip_memory_lemma_echo(
+            f"{TEXTUTIL.BOLD_ON}ακριβώς{TEXTUTIL.BOLD_OFF}\n\n※ ακριβ- ~ akribisch\n"
+        )
+        self.assertIn("ακριβ- ~ akribisch", keep)
+
     def test_img_alt_becomes_text(self):
         text = TEXTUTIL.plain_text('<img src="haus.jpg" alt="Haus">')
         self.assertEqual(text, "[Haus]")

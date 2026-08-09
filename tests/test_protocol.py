@@ -199,6 +199,83 @@ class ParsePushPayloadTests(unittest.TestCase):
 
         self.assertEqual(context.exception.status, 413)
 
+    def test_json_flags_only_batch(self):
+        body = json.dumps(
+            {
+                "batch_id": "flags-only",
+                "reviews": [],
+                "flags": [
+                    {"card_id": 1700000000000, "flag": 1},
+                    {"card_id": "1700000000001", "flag": 0},
+                ],
+            }
+        ).encode()
+
+        batch = parse_push_payload(body, "application/json")
+
+        self.assertEqual(len(batch.reviews), 0)
+        self.assertEqual(len(batch.flags), 2)
+        self.assertEqual(batch.flags[0].flag, 1)
+        self.assertEqual(batch.flags[1].card_id, 1700000000001)
+        self.assertEqual(batch.flags[1].flag, 0)
+
+    def test_json_reviews_and_flags(self):
+        body = json.dumps(
+            {
+                "batch_id": "both",
+                "reviews": [{"card_id": 1, "ease": 3}],
+                "flags": [{"card_id": 1, "flag": 1}],
+            }
+        ).encode()
+
+        batch = parse_push_payload(body, "application/json")
+        self.assertEqual(len(batch.reviews), 1)
+        self.assertEqual(len(batch.flags), 1)
+
+    def test_empty_reviews_and_flags_rejected(self):
+        body = json.dumps({"batch_id": "empty", "reviews": [], "flags": []}).encode()
+
+        with self.assertRaises(ProtocolError) as context:
+            parse_push_payload(body, "application/json")
+
+        self.assertEqual(context.exception.code, "empty_batch")
+
+    def test_invalid_flag_value_rejected(self):
+        body = json.dumps(
+            {
+                "batch_id": "bad-flag",
+                "flags": [{"card_id": 1, "flag": 9}],
+            }
+        ).encode()
+
+        with self.assertRaises(ProtocolError) as context:
+            parse_push_payload(body, "application/json")
+
+        self.assertEqual(context.exception.code, "invalid_field")
+
+    def test_pull_ndjson_preserves_flag(self):
+        encoded = encode_pull_ndjson(
+            {
+                "status": "success",
+                "protocol_version": 3,
+                "pull_id": "pull-flag",
+                "server_time": 1,
+                "cards": [
+                    {
+                        "id": "1",
+                        "front": "Q",
+                        "back": "A",
+                        "flag": 1,
+                        "is_learning": False,
+                    }
+                ],
+            }
+        )
+        card = json.loads(encoded.decode("utf-8").splitlines()[1])
+        self.assertEqual(card["flag"], 1)
+        self.assertEqual(card["type"], "card")
+
+
 
 if __name__ == "__main__":
     unittest.main()

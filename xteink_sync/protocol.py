@@ -12,6 +12,7 @@ from typing import Any, Mapping, Optional, Tuple
 
 MAX_BATCH_ID_LENGTH = 128
 MAX_DURATION_MS = 3_600_000
+MAX_FLAGS_PER_PUSH = 1000
 PULL_NDJSON_MIME = "application/x-ndjson"
 
 
@@ -34,9 +35,18 @@ class Review:
 
 
 @dataclass(frozen=True)
+class FlagUpdate:
+    """Anki user flag 0–7 (0 = clear). X4 toggles 0 ↔ 1 (red)."""
+
+    card_id: int
+    flag: int
+
+
+@dataclass(frozen=True)
 class PushBatch:
     batch_id: str
     reviews: Tuple[Review, ...]
+    flags: Tuple[FlagUpdate, ...]
     legacy_csv: bool
     derived_batch_id: bool
 
@@ -141,6 +151,18 @@ def _review_from_mapping(item: Any, index: int) -> Review:
     )
 
 
+def _flag_from_mapping(item: Any, index: int) -> FlagUpdate:
+    if not isinstance(item, dict):
+        raise ProtocolError(
+            "invalid_flag", f"flags[{index}] must be a JSON object"
+        )
+
+    card_id_value = item.get("card_id", item.get("id"))
+    card_id = _integer(card_id_value, f"flags[{index}].card_id", 1, 2**63 - 1)
+    flag = _integer(item.get("flag", 0), f"flags[{index}].flag", 0, 7)
+    return FlagUpdate(card_id=card_id, flag=flag)
+
+
 def _validate_batch_id(value: Any) -> str:
     if not isinstance(value, str):
         raise ProtocolError("invalid_batch_id", "batch_id must be a string")
@@ -188,17 +210,29 @@ def _parse_json(body: bytes, header_batch_id: Optional[str]) -> PushBatch:
         batch_id = _validate_batch_id(supplied_batch_id)
         derived = False
 
-    reviews_value = payload.get("reviews")
+    reviews_value = payload.get("reviews", [])
+    if reviews_value is None:
+        reviews_value = []
     if not isinstance(reviews_value, list):
         raise ProtocolError("invalid_reviews", "reviews must be a JSON array")
+
+    flags_value = payload.get("flags", [])
+    if flags_value is None:
+        flags_value = []
+    if not isinstance(flags_value, list):
+        raise ProtocolError("invalid_flags", "flags must be a JSON array")
 
     reviews = tuple(
         _review_from_mapping(item, index)
         for index, item in enumerate(reviews_value)
     )
+    flags = tuple(
+        _flag_from_mapping(item, index) for index, item in enumerate(flags_value)
+    )
     return PushBatch(
         batch_id=batch_id,
         reviews=reviews,
+        flags=flags,
         legacy_csv=False,
         derived_batch_id=derived,
     )
@@ -257,6 +291,7 @@ def _parse_csv(body: bytes, header_batch_id: Optional[str]) -> PushBatch:
     return PushBatch(
         batch_id=batch_id,
         reviews=tuple(reviews),
+        flags=(),
         legacy_csv=True,
         derived_batch_id=derived,
     )
@@ -267,9 +302,10 @@ def parse_push_payload(
     content_type: str,
     header_batch_id: Optional[str] = None,
     max_reviews: int = 500,
+    max_flags: int = MAX_FLAGS_PER_PUSH,
     allow_legacy_csv: bool = True,
 ) -> PushBatch:
-    """Parse and validate a JSON or legacy CSV review batch."""
+    """Parse and validate a JSON review/flag batch (or legacy CSV reviews)."""
 
     if not body.strip():
         raise ProtocolError("empty_body", "Request body must not be empty")
@@ -287,12 +323,21 @@ def parse_push_payload(
             )
         batch = _parse_csv(body, header_batch_id)
 
-    if not batch.reviews:
-        raise ProtocolError("empty_reviews", "At least one review is required")
+    if not batch.reviews and not batch.flags:
+        raise ProtocolError(
+            "empty_batch",
+            "At least one review or flag update is required",
+        )
     if len(batch.reviews) > max_reviews:
         raise ProtocolError(
             "too_many_reviews",
             f"A push may contain at most {max_reviews} reviews",
+            status=413,
+        )
+    if len(batch.flags) > max_flags:
+        raise ProtocolError(
+            "too_many_flags",
+            f"A push may contain at most {max_flags} flag updates",
             status=413,
         )
     return batch

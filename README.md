@@ -42,11 +42,15 @@ Optional config: **Tools → Add-ons → Xteink X4 E-Ink Offline Sync → Config
 2. Flash **only** on an X4 with CrossPoint **1.4.1** layout (CrossPoint web flasher “Custom .bin”, or **Settings → Firmware from SD**).
 3. On the device: **Data transfer → Join network**.
 4. In a browser: `http://crosspoint.local/settings` → **Anki Offline Sync**
-   - Mac server URL, e.g. `http://192.168.1.23:5050`
-   - API token from Anki
+   - Mac server URL, e.g. `http://192.168.1.23:5050` — **or** on device:
+     **Anki → Anki-Einstellungen → Mac-Server suchen** (mDNS `_xteink-anki._tcp`)
+   - API token from Anki (**Tools → Xteink Status**; not auto-discovered)
    - Max cards per deck / total (sent on each pull)
    - Card font: leave **Use reader / SD font** off for Greek; turn on after uploading a font under **Fonts**
 5. Home → **Anki** → load today’s cards, study, push reviews when back on Wi‑Fi.
+
+With Anki open, the add-on advertises the LAN service on the configured `port`
+(default 5050). Ensure Anki is allowed through the OS firewall.
 
 Reserve a DHCP lease for the computer so the server IP stays stable.
 

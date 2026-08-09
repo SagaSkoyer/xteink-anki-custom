@@ -34162,10 +34162,10 @@ index a259603..b323425 100755
    done
  done
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
-index ecd7b0e..7db838f 100644
+index ecd7b0e..d3a9708 100644
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -8,6 +8,52 @@ STR_SLEEPING: "SLEEPING"
+@@ -8,6 +8,60 @@ STR_SLEEPING: "SLEEPING"
  STR_ENTERING_SLEEP: "Going to sleep"
  STR_BROWSE_FILES: "Browse Files"
  STR_FILE_TRANSFER: "File Transfer"
@@ -34175,6 +34175,14 @@ index ecd7b0e..7db838f 100644
 +STR_ANKI_UPLOAD: "Upload reviews"
 +STR_ANKI_SETTINGS: "Anki settings"
 +STR_ANKI_SERVER_URL: "Mac server URL"
++STR_ANKI_DISCOVER: "Find Mac server"
++STR_ANKI_DISCOVERING: "Searching LAN (mDNS)..."
++STR_ANKI_DISCOVER_OK: "Found"
++STR_ANKI_DISCOVER_NONE: "No Xteink Anki server found"
++STR_ANKI_DISCOVER_WIFI: "Join Wi-Fi first to search"
++STR_ANKI_CONN_FAILED: "Cannot reach Anki"
++STR_ANKI_CONN_OFFER_DISCOVER: "Search for Mac server on Wi-Fi? Confirm = search. Cancel = Anki is open (check URL)."
++STR_ANKI_RETRYING: "Retrying with new server..."
 +STR_ANKI_API_TOKEN: "API token"
 +STR_ANKI_CLEAR_LOCAL: "Clear local Anki data"
 +STR_ANKI_CLEAR_CONFIRM: "Delete downloaded cards and pending reviews?"
@@ -34219,10 +34227,10 @@ index ecd7b0e..7db838f 100644
  STR_CONTINUE_READING: "Continue Reading"
  STR_NO_OPEN_BOOK: "No open book"
 diff --git a/lib/I18n/translations/german.yaml b/lib/I18n/translations/german.yaml
-index a7c1ad0..3b166b8 100644
+index a7c1ad0..72e0b73 100644
 --- a/lib/I18n/translations/german.yaml
 +++ b/lib/I18n/translations/german.yaml
-@@ -8,6 +8,52 @@ STR_SLEEPING: "STANDBY"
+@@ -8,6 +8,60 @@ STR_SLEEPING: "STANDBY"
  STR_ENTERING_SLEEP: "Standby"
  STR_BROWSE_FILES: "Durchsuchen"
  STR_FILE_TRANSFER: "Datentransfer"
@@ -34232,6 +34240,14 @@ index a7c1ad0..3b166b8 100644
 +STR_ANKI_UPLOAD: "Bewertungen übertragen"
 +STR_ANKI_SETTINGS: "Anki-Einstellungen"
 +STR_ANKI_SERVER_URL: "Mac-Serveradresse"
++STR_ANKI_DISCOVER: "Mac-Server suchen"
++STR_ANKI_DISCOVERING: "LAN wird gesucht (mDNS)..."
++STR_ANKI_DISCOVER_OK: "Gefunden"
++STR_ANKI_DISCOVER_NONE: "Kein Xteink-Anki-Server gefunden"
++STR_ANKI_DISCOVER_WIFI: "Zuerst WLAN beitreten"
++STR_ANKI_CONN_FAILED: "Anki nicht erreichbar"
++STR_ANKI_CONN_OFFER_DISCOVER: "Mac-Server im WLAN suchen? Bestätigen = suchen. Abbrechen = Anki läuft (URL prüfen)."
++STR_ANKI_RETRYING: "Erneuter Versuch mit neuem Server..."
 +STR_ANKI_API_TOKEN: "API-Token"
 +STR_ANKI_CLEAR_LOCAL: "Lokale Anki-Daten löschen"
 +STR_ANKI_CLEAR_CONFIRM: "Geladene Karten und offene Bewertungen löschen?"
@@ -34275,6 +34291,19 @@ index a7c1ad0..3b166b8 100644
  STR_SETTINGS_TITLE: "Einstellungen"
  STR_CONTINUE_READING: "Weiterlesen"
  STR_NO_OPEN_BOOK: "Aktuell kein Buch"
+diff --git a/platformio.ini b/platformio.ini
+index 0fae051..896cca2 100644
+--- a/platformio.ini
++++ b/platformio.ini
+@@ -80,7 +80,7 @@ build_flags =
+ extends = base
+ build_flags =
+   ${base.build_flags}
+-  -DCROSSPOINT_VERSION=\"${crosspoint.version}\"
++  -DCROSSPOINT_VERSION=\"${crosspoint.version}-anki-2.5.7\"
+   -DENABLE_SERIAL_LOG
+   -DLOG_LEVEL=1 ; Set log level to info for release builds
+ 
 diff --git a/src/SilentRestart.h b/src/SilentRestart.h
 index f94345c..5347acf 100644
 --- a/src/SilentRestart.h
@@ -34337,12 +34366,13 @@ index 9066888..055b1e3 100644
    void goToBoot();
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..e5c99b4
+index 0000000..cb6892b
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,1834 @@
+@@ -0,0 +1,2068 @@
 +#include "AnkiActivity.h"
 +
++#include "../../anki/AnkiFirmwareVersion.h"
 +#include <EpdFontData.h>
 +#include <EpdFontFamily.h>
 +#include <GfxRenderer.h>
@@ -34361,6 +34391,8 @@ index 0000000..e5c99b4
 +#include "activities/anki/AnkiSettingsActivity.h"
 +#include "activities/network/WifiSelectionActivity.h"
 +#include "activities/reader/ReaderUtils.h"
++#include "activities/util/ConfirmationActivity.h"
++#include "anki/AnkiMdns.h"
 +#include "anki/AnkiSyncClient.h"
 +#include "components/UITheme.h"
 +#include "fontIds.h"
@@ -35467,11 +35499,11 @@ index 0000000..e5c99b4
 +    menuItems.push_back(MenuItem{MenuAction::LEARN, 0});
 +  }
 +
-+  if (ANKI_STORE.hasPendingReviews()) {
++  if (ANKI_STORE.hasPendingUpload()) {
 +    menuItems.push_back(MenuItem{MenuAction::UPLOAD, 0});
 +  }
-+  // Re-download only when no pending reviews, so open grades stay consistent.
-+  if (!ANKI_STORE.hasPendingReviews()) {
++  // Re-download only when no pending reviews/flags, so open grades stay consistent.
++  if (!ANKI_STORE.hasPendingUpload()) {
 +    menuItems.push_back(MenuItem{MenuAction::DOWNLOAD, 0});
 +  }
 +  menuItems.push_back(MenuItem{MenuAction::CONFIGURE, 0});
@@ -35507,22 +35539,18 @@ index 0000000..e5c99b4
 +      requestUpdate();
 +      return;
 +    }
++    // Flag before Confirm→answer so Confirm+side can toggle without revealing.
++    if (handleCardSideButtons()) return;
 +    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
 +      showAnswer();
 +      return;
 +    }
-+    handleCardPaging();
 +    return;
 +  }
 +
 +  if (state == State::ANSWER) {
-+    if (mappedInput.wasPressed(MappedInputManager::Button::PageBack) ||
-+        mappedInput.wasPressed(MappedInputManager::Button::PageForward) ||
-+        mappedInput.wasPressed(MappedInputManager::Button::Up) ||
-+        mappedInput.wasPressed(MappedInputManager::Button::Down)) {
-+      handleCardPaging();
-+      return;
-+    }
++    // Flag / side paging before grade buttons.
++    if (handleCardSideButtons()) return;
 +    // Grade buttons: physical L→R is Again/Hard/Good/Easy (reversed when left-handed).
 +    // See gradeEaseForFrontButton() / drawGradeButtonHints().
 +    const int hw = mappedInput.getPressedFrontButton();
@@ -35595,6 +35623,7 @@ index 0000000..e5c99b4
 +  }
 +
 +  networkAction = action;
++  discoverOfferedThisAction = false;
 +  wifiActivated = true;
 +  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
 +                         [this](const ActivityResult& result) {
@@ -35621,8 +35650,14 @@ index 0000000..e5c99b4
 +
 +  const AnkiSyncClient::Error result =
 +      networkAction == NetworkAction::PULL ? AnkiSyncClient::pull(detail) : AnkiSyncClient::push(detail);
-+  WiFi.disconnect(false);
-+  esp_wifi_stop();
++
++  // Keep Wi-Fi up briefly if we may offer mDNS search; stop otherwise.
++  const bool offerDiscover =
++      result == AnkiSyncClient::Error::NETWORK_ERROR && !discoverOfferedThisAction;
++  if (!offerDiscover) {
++    WiFi.disconnect(false);
++    esp_wifi_stop();
++  }
 +
 +  if (result == AnkiSyncClient::Error::OK) {
 +    std::string loadError;
@@ -35648,11 +35683,14 @@ index 0000000..e5c99b4
 +      message += "\n";
 +      message += detail;
 +    }
++  } else if (offerDiscover) {
++    // Connection refused / host unreachable — ask: search LAN or Anki is open.
++    discoverOfferedThisAction = true;
++    offerDiscoverAfterConnectFailure();
++    return;
 +  } else {
 +    state = State::ERROR;
 +    if (result == AnkiSyncClient::Error::NETWORK_ERROR) {
-+      // Connection refused / host unreachable when Anki is closed or off-LAN —
-+      // plain guidance, no ESP_ERR_* technical tail.
 +      message = tr(STR_ANKI_NETWORK_HINT);
 +    } else {
 +      message = AnkiSyncClient::errorString(result);
@@ -35664,6 +35702,90 @@ index 0000000..e5c99b4
 +  restartOnDismiss = !pullOk;
 +  networkAction = NetworkAction::NONE;
 +  requestUpdate();
++}
++
++void AnkiActivity::offerDiscoverAfterConnectFailure() {
++  // Wi-Fi may still be up from the failed attempt; dialog first.
++  startActivityForResult(
++      std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_ANKI_CONN_FAILED),
++                                             tr(STR_ANKI_CONN_OFFER_DISCOVER)),
++      [this](const ActivityResult& result) { onDiscoverOfferResult(!result.isCancelled); });
++}
++
++void AnkiActivity::onDiscoverOfferResult(const bool search) {
++  if (!search) {
++    // User is sure Anki is running — keep URL, show guidance.
++    WiFi.disconnect(false);
++    esp_wifi_stop();
++    state = State::ERROR;
++    message = tr(STR_ANKI_NETWORK_HINT);
++    restartOnDismiss = true;
++    networkAction = NetworkAction::NONE;
++    requestUpdate();
++    return;
++  }
++
++  // Confirm = search for Mac server on LAN, then retry pull/push.
++  if (WiFi.status() == WL_CONNECTED) {
++    discoverThenRetry();
++    return;
++  }
++  reconnectWifiThenDiscoverAndRetry();
++}
++
++void AnkiActivity::reconnectWifiThenDiscoverAndRetry() {
++  wifiActivated = true;
++  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
++                         [this](const ActivityResult& result) {
++                           if (result.isCancelled || WiFi.status() != WL_CONNECTED) {
++                             WiFi.disconnect(false);
++                             esp_wifi_stop();
++                             state = State::ERROR;
++                             message = tr(STR_ANKI_DISCOVER_WIFI);
++                             restartOnDismiss = true;
++                             networkAction = NetworkAction::NONE;
++                             requestUpdate();
++                             return;
++                           }
++                           discoverThenRetry();
++                         });
++}
++
++void AnkiActivity::discoverThenRetry() {
++  state = State::WORKING;
++  message = tr(STR_ANKI_DISCOVERING);
++  requestUpdateAndWait();
++
++  std::string url;
++  if (!AnkiMdns::discoverServerUrl(url)) {
++    WiFi.disconnect(false);
++    esp_wifi_stop();
++    state = State::ERROR;
++    message = tr(STR_ANKI_DISCOVER_NONE);
++    restartOnDismiss = true;
++    networkAction = NetworkAction::NONE;
++    requestUpdate();
++    return;
++  }
++
++  ANKI_STORE.setServerUrl(url);
++  std::string saveError;
++  if (!ANKI_STORE.saveConfig(saveError)) {
++    WiFi.disconnect(false);
++    esp_wifi_stop();
++    state = State::ERROR;
++    message = saveError.empty() ? tr(STR_ANKI_DISCOVER_NONE) : saveError;
++    restartOnDismiss = true;
++    networkAction = NetworkAction::NONE;
++    requestUpdate();
++    return;
++  }
++
++  // Retry the original action with the discovered URL (Wi-Fi still up).
++  state = State::WORKING;
++  message = tr(STR_ANKI_RETRYING);
++  requestUpdateAndWait();
++  performNetworkAction();
 +}
 +
 +void AnkiActivity::startReviewForDeck(const uint16_t deckIndex) {
@@ -35747,6 +35869,8 @@ index 0000000..e5c99b4
 +  pageStart = 0;
 +  nextPageStart = 0;
 +  pageHistory.clear();
++  pendingSidePageDir = 0;
++  flagHoldFired = false;
 +}
 +
 +void AnkiActivity::nextPage() {
@@ -35766,6 +35890,7 @@ index 0000000..e5c99b4
 +}
 +
 +void AnkiActivity::handleCardPaging() {
++  // Kept for any legacy call sites; card views use handleCardSideButtons().
 +  if (mappedInput.wasPressed(MappedInputManager::Button::PageBack) ||
 +      mappedInput.wasPressed(MappedInputManager::Button::Up)) {
 +    previousPage();
@@ -35773,6 +35898,95 @@ index 0000000..e5c99b4
 +             mappedInput.wasPressed(MappedInputManager::Button::Down)) {
 +    nextPage();
 +  }
++}
++
++bool AnkiActivity::applyFlagToggle() {
++  uint8_t newFlag = 0;
++  std::string error;
++  if (!ANKI_STORE.toggleCurrentCardFlag(newFlag, error)) {
++    return true;  // consume gesture even on failure
++  }
++  currentCard.flag = newFlag;
++  requestUpdate();
++  return true;
++}
++
++bool AnkiActivity::tryToggleFlagGesture() {
++  // X4 hardware: BTN_UP and BTN_DOWN share one ADC ladder — only one side button
++  // can be detected at a time. Up+Down simultaneous chords are impossible.
++  //
++  // Working gestures (two ADC channels or timing):
++  //   A) Confirm (front/ADC1) + Up or Down (side/ADC2)
++  //   B) Long-press Up or Down ≥ kFlagHoldMs (short press pages on release)
++  using B = MappedInputManager::Button;
++  const bool confHeld = mappedInput.isPressed(B::Confirm);
++  const bool confEdge = mappedInput.wasPressed(B::Confirm);
++  const bool upEdge = mappedInput.wasPressed(B::Up) || mappedInput.wasPressed(B::PageBack);
++  const bool downEdge = mappedInput.wasPressed(B::Down) || mappedInput.wasPressed(B::PageForward);
++  const bool upHeld = mappedInput.isPressed(B::Up) || mappedInput.isPressed(B::PageBack);
++  const bool downHeld = mappedInput.isPressed(B::Down) || mappedInput.isPressed(B::PageForward);
++  const bool sideEdge = upEdge || downEdge;
++  const bool sideHeld = upHeld || downHeld;
++
++  // A) Cross-ADC chord: Confirm + either side button.
++  if ((confHeld || confEdge) && (sideHeld || sideEdge)) {
++    if (confEdge || sideEdge) {
++      pendingSidePageDir = 0;
++      flagHoldFired = true;
++      return applyFlagToggle();
++    }
++  }
++
++  // B) Long-press side only (single ADC) — fire once per hold.
++  if (sideHeld && !confHeld && pendingSidePageDir != 0 && !flagHoldFired) {
++    if (mappedInput.getHeldTime() >= kFlagHoldMs) {
++      flagHoldFired = true;
++      pendingSidePageDir = 0;
++      return applyFlagToggle();
++    }
++  }
++  return false;
++}
++
++bool AnkiActivity::handleCardSideButtons() {
++  using B = MappedInputManager::Button;
++  const bool upEdge = mappedInput.wasPressed(B::Up) || mappedInput.wasPressed(B::PageBack);
++  const bool downEdge = mappedInput.wasPressed(B::Down) || mappedInput.wasPressed(B::PageForward);
++  const bool upRel = mappedInput.wasReleased(B::Up) || mappedInput.wasReleased(B::PageBack);
++  const bool downRel = mappedInput.wasReleased(B::Down) || mappedInput.wasReleased(B::PageForward);
++  const bool sideHeld =
++      mappedInput.isPressed(B::Up) || mappedInput.isPressed(B::Down) ||
++      mappedInput.isPressed(B::PageBack) || mappedInput.isPressed(B::PageForward);
++
++  // Start a short-press page candidate (resolved on release unless long-press flags).
++  if (upEdge) {
++    pendingSidePageDir = -1;
++    flagHoldFired = false;
++  } else if (downEdge) {
++    pendingSidePageDir = 1;
++    flagHoldFired = false;
++  }
++
++  if (tryToggleFlagGesture()) return true;
++
++  // Short press: page on release if we never crossed the flag hold threshold.
++  if (upRel || downRel) {
++    const bool doPage = (pendingSidePageDir != 0 && !flagHoldFired);
++    const int8_t dir = pendingSidePageDir;
++    pendingSidePageDir = 0;
++    flagHoldFired = false;
++    if (doPage) {
++      if (dir < 0) previousPage();
++      else if (dir > 0) nextPage();
++      return true;
++    }
++  }
++
++  // Clear latch when nothing side-related is held.
++  if (!sideHeld && pendingSidePageDir == 0) {
++    flagHoldFired = false;
++  }
++  return false;
 +}
 +
 +void AnkiActivity::render(RenderLock&&) {
@@ -35804,7 +36018,8 @@ index 0000000..e5c99b4
 +  const auto& metrics = UITheme::getInstance().getMetrics();
 +  const int pageWidth = renderer.getScreenWidth();
 +  const int pageHeight = renderer.getScreenHeight();
-+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ANKI));
++  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ANKI),
++                 ankiFirmwareVersionLabel());
 +
 +  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
 +  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
@@ -35856,7 +36071,15 @@ index 0000000..e5c99b4
 +          snprintf(value, sizeof(value), tr(STR_ANKI_REMAINING_FORMAT),
 +                   static_cast<unsigned int>(info.remaining));
 +        } else if (item.action == MenuAction::UPLOAD) {
-+          snprintf(value, sizeof(value), "%u", static_cast<unsigned int>(ANKI_STORE.getReviewCount()));
++          const unsigned reviews = static_cast<unsigned int>(ANKI_STORE.getReviewCount());
++          const unsigned flags = static_cast<unsigned int>(ANKI_STORE.getPendingFlagCount());
++          if (flags > 0 && reviews > 0) {
++            snprintf(value, sizeof(value), "%u+%u", reviews, flags);
++          } else if (flags > 0) {
++            snprintf(value, sizeof(value), "F%u", flags);
++          } else {
++            snprintf(value, sizeof(value), "%u", reviews);
++          }
 +        }
 +        return std::string(value);
 +      },
@@ -36042,10 +36265,12 @@ index 0000000..e5c99b4
 +  const bool landscape = ANKI_STORE.isLandscapeCards();
 +
 +  // Status strip (UI_10 throughout):
-+  //   progress bar (full width)
-+  //   "12/50 · 76%" | [front / EN+L2, answer only] | <deck name>
++  //   progress bar | [flag column when set]
++  //   "12/50 · 76%" | [front / EN+L2] | <deck name>
 +  //   ────────────────────────────────────
-+  // Progress stays left, deck right; front sits in the middle gap (truncated).
++  // Flag layout (approved mocks):
++  //   Landscape: right of bar, top = bar bottom edge (dropped under bar line).
++  //   Portrait:  right column, bottom-aligned with status block; bar+deck shift left.
 +  const AnkiDeckInfo deckInfo = ANKI_STORE.getDeckInfo(ANKI_STORE.getCurrentDeckIndex());
 +  const uint16_t remaining = deckInfo.remaining;
 +  const uint16_t total = deckInfo.total > 0 ? deckInfo.total : remaining;
@@ -36058,6 +36283,13 @@ index 0000000..e5c99b4
 +  const int statsFont = UI_10_FONT_ID;
 +  const int statsLineH = renderer.getLineHeight(statsFont);
 +  constexpr int kBarH = 8;
++  constexpr int kFlagW = 18;
++  constexpr int kFlagH = 16;
++  constexpr int kFlagGap = 10;
++  const bool showFlag = currentCard.flag != 0;
++  // Content column (bar + stats + deck) shrinks when the flag column is reserved.
++  const int contentW =
++      showFlag ? std::max(40, statusInnerW - kFlagW - kFlagGap) : statusInnerW;
 +  const int gapAfterHeader = landscape ? 2 : 4;
 +  const int gapBarStats = 2;
 +  const int gapStatsSep = landscape ? 2 : 4;
@@ -36066,12 +36298,13 @@ index 0000000..e5c99b4
 +
 +  const int barY = cursorY;
 +  const int barX = safe.x + padX;
-+  const int barW = statusInnerW;
++  const int barW = contentW;
 +  renderer.drawRect(barX, barY, barW, kBarH);
 +  if (total > 0 && percentDone > 0) {
 +    const int fillW = std::max(1, static_cast<int>((static_cast<int64_t>(barW - 2) * percentDone) / 100));
 +    renderer.fillRect(barX + 1, barY + 1, std::min(fillW, barW - 2), kBarH - 2, true);
 +  }
++
 +  cursorY = barY + kBarH + gapBarStats;
 +
 +  const int statsY = cursorY;
@@ -36081,16 +36314,16 @@ index 0000000..e5c99b4
 +  const int statsW = renderer.getTextWidth(statsFont, stats, EpdFontFamily::REGULAR);
 +  renderer.drawText(statsFont, safe.x + padX, statsY, stats, true, EpdFontFamily::REGULAR);
 +
-+  // Right: deck name (reserve space first so the middle front can fill the gap).
++  // Right of content column: deck name (flag sits further right when set).
 +  constexpr int kSideGap = 8;
 +  int nameW = 0;
 +  std::string nameFit;
 +  if (!deckInfo.name.empty()) {
-+    // Cap deck name so front still gets room in landscape (~40% max for name).
-+    const int nameCap = std::max(40, statusInnerW / 3);
++    // Cap deck name so front still gets room (~1/3 of content column).
++    const int nameCap = std::max(40, contentW / 3);
 +    nameFit = renderer.truncatedText(statsFont, deckInfo.name.c_str(), nameCap, EpdFontFamily::BOLD);
 +    nameW = renderer.getTextWidth(statsFont, nameFit.c_str(), EpdFontFamily::BOLD);
-+    renderer.drawText(statsFont, safe.x + padX + statusInnerW - nameW, statsY, nameFit.c_str(), true,
++    renderer.drawText(statsFont, safe.x + padX + contentW - nameW, statsY, nameFit.c_str(), true,
 +                      EpdFontFamily::BOLD);
 +  }
 +
@@ -36099,7 +36332,7 @@ index 0000000..e5c99b4
 +    const std::string frontPlain = plainStatusPreview(currentCard.front);
 +    if (!frontPlain.empty()) {
 +      const int leftEdge = statsW + kSideGap;
-+      const int rightEdge = nameW > 0 ? (statusInnerW - nameW - kSideGap) : statusInnerW;
++      const int rightEdge = nameW > 0 ? (contentW - nameW - kSideGap) : contentW;
 +      const int midMaxW = std::max(0, rightEdge - leftEdge);
 +      if (midMaxW > 16) {
 +        const std::string frontFit =
@@ -36114,6 +36347,35 @@ index 0000000..e5c99b4
 +      }
 +    }
 +  }
++
++  // Flag column (right of content): orientation-specific vertical placement.
++  if (showFlag) {
++    const int flagX = safe.x + padX + statusInnerW - kFlagW;
++    int flagY = barY;
++    if (landscape) {
++      // Top of flag sits on the lower progress-bar edge (dropped under the bar).
++      flagY = barY + kBarH;
++    } else {
++      // Portrait: bottom-align with status block (stats line bottom).
++      const int statusBottom = statsY + statsLineH;
++      flagY = statusBottom - kFlagH;
++    }
++    // Solid pennant + pole (no internal white line).
++    const int poleX = flagX + 2;
++    renderer.drawLine(poleX, flagY, poleX, flagY + kFlagH, true);
++    renderer.drawLine(poleX + 1, flagY, poleX + 1, flagY + kFlagH, true);
++    const int top = flagY + 1;
++    const int bot = flagY + (kFlagH * 72) / 100;
++    const int midY = (top + bot) / 2;
++    for (int y = top; y <= bot; y++) {
++      const int t = (y <= midY) ? (y - top) : (bot - y);
++      const int span = 4 + (t * (kFlagW - 6)) / std::max(1, midY - top);
++      const int x0 = poleX + 2;
++      const int x1 = std::min(flagX + kFlagW - 1, x0 + span);
++      if (x1 > x0) renderer.drawLine(x0, y, x1, y, true);
++    }
++  }
++
 +  cursorY = statsY + statsLineH + gapStatsSep;
 +
 +  const int separatorY = cursorY;
@@ -36160,7 +36422,8 @@ index 0000000..e5c99b4
 +  const auto& metrics = UITheme::getInstance().getMetrics();
 +  const int pageWidth = renderer.getScreenWidth();
 +  const int pageHeight = renderer.getScreenHeight();
-+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ANKI));
++  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ANKI),
++                 ankiFirmwareVersionLabel());
 +
 +  const int x = metrics.contentSidePadding;
 +  const int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 3;
@@ -36177,10 +36440,10 @@ index 0000000..e5c99b4
 +}
 diff --git a/src/activities/anki/AnkiActivity.h b/src/activities/anki/AnkiActivity.h
 new file mode 100644
-index 0000000..a7ad252
+index 0000000..4af27c9
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.h
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,93 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -36224,6 +36487,8 @@ index 0000000..a7ad252
 +  std::string detail;
 +  bool restartOnDismiss = false;
 +  bool wifiActivated = false;
++  // One mDNS offer per pull/push attempt (avoid dialog loop after retry fails).
++  bool discoverOfferedThisAction = false;
 +  uint32_t cardStartedAt = 0;
 +
 +  size_t pageStart = 0;
@@ -36233,6 +36498,12 @@ index 0000000..a7ad252
 +  // Shared by card + menu paints; 0 forces HALF on the next paint, then FAST.
 +  int pagesUntilFullRefresh = 0;
 +
++  // Side Up/Down share one ADC — cannot chord both at once. Flag gestures:
++  // Confirm+side, or long-press side (short press still pages on release).
++  static constexpr unsigned long kFlagHoldMs = 550;
++  int8_t pendingSidePageDir = 0;  // -1 prev, +1 next, 0 none
++  bool flagHoldFired = false;
++
 +  void rebuildMenu();
 +  void displayCardBuffer();
 +  void displayUiBuffer();
@@ -36240,6 +36511,11 @@ index 0000000..a7ad252
 +  void startNetworkAction(NetworkAction action);
 +  void onWifiSelectionComplete(bool success);
 +  void performNetworkAction();
++  // After NETWORK_ERROR: offer mDNS search vs "Anki is open / keep URL".
++  void offerDiscoverAfterConnectFailure();
++  void onDiscoverOfferResult(bool search);
++  void reconnectWifiThenDiscoverAndRetry();
++  void discoverThenRetry();
 +  void startReview();
 +  void startReviewForDeck(uint16_t deckIndex);
 +  void showAnswer();
@@ -36247,6 +36523,10 @@ index 0000000..a7ad252
 +  bool loadCurrentCard();
 +  void resetPaging();
 +  void handleCardPaging();
++  // Card side-button handling: flag gestures + short-press paging.
++  bool handleCardSideButtons();
++  bool tryToggleFlagGesture();
++  bool applyFlagToggle();
 +  void nextPage();
 +  void previousPage();
 +  void applyUiOrientation(bool forCard);
@@ -36259,29 +36539,34 @@ index 0000000..a7ad252
 +};
 diff --git a/src/activities/anki/AnkiSettingsActivity.cpp b/src/activities/anki/AnkiSettingsActivity.cpp
 new file mode 100644
-index 0000000..8af1c22
+index 0000000..a0be9b8
 --- /dev/null
 +++ b/src/activities/anki/AnkiSettingsActivity.cpp
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,263 @@
 +#include "AnkiSettingsActivity.h"
 +
 +#include <GfxRenderer.h>
 +#include <I18n.h>
++#include <WiFi.h>
 +
 +#include <cstdio>
 +#include <variant>
 +
++#include "activities/network/WifiSelectionActivity.h"
 +#include "activities/util/ConfirmationActivity.h"
 +#include "activities/util/KeyboardEntryActivity.h"
++#include "anki/AnkiMdns.h"
 +#include "anki/AnkiStore.h"
 +#include "components/UITheme.h"
 +#include "fontIds.h"
++#include "../../anki/AnkiFirmwareVersion.h"
 +
 +namespace {
-+const StrId MENU_NAMES[9] = {
-+    StrId::STR_ANKI_SERVER_URL,     StrId::STR_ANKI_API_TOKEN,       StrId::STR_ANKI_HANDEDNESS,
-+    StrId::STR_ANKI_FONT_SIZE,      StrId::STR_ANKI_ORIENTATION,     StrId::STR_ANKI_MAX_PER_DECK,
-+    StrId::STR_ANKI_MAX_TOTAL,      StrId::STR_ANKI_CARD_FONT,       StrId::STR_ANKI_CLEAR_LOCAL,
++const StrId MENU_NAMES[10] = {
++    StrId::STR_ANKI_SERVER_URL,  StrId::STR_ANKI_DISCOVER,      StrId::STR_ANKI_API_TOKEN,
++    StrId::STR_ANKI_HANDEDNESS,  StrId::STR_ANKI_FONT_SIZE,     StrId::STR_ANKI_ORIENTATION,
++    StrId::STR_ANKI_MAX_PER_DECK, StrId::STR_ANKI_MAX_TOTAL,    StrId::STR_ANKI_CARD_FONT,
++    StrId::STR_ANKI_CLEAR_LOCAL,
 +};
 +
 +const char* fontScaleLabel(const uint8_t scale) {
@@ -36307,6 +36592,7 @@ index 0000000..8af1c22
 +  Activity::onEnter();
 +  selectedIndex = 0;
 +  statusMessage.clear();
++  wifiActivated = false;
 +  std::string error;
 +  if (!ANKI_STORE.load(error)) statusMessage = error;
 +  requestUpdate();
@@ -36340,6 +36626,48 @@ index 0000000..8af1c22
 +  requestUpdate();
 +}
 +
++void AnkiSettingsActivity::startDiscover() {
++  statusMessage = tr(STR_ANKI_DISCOVERING);
++  requestUpdate();
++
++  if (WiFi.status() == WL_CONNECTED) {
++    runDiscover();
++    return;
++  }
++
++  wifiActivated = true;
++  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
++                         [this](const ActivityResult& result) {
++                           if (result.isCancelled || WiFi.status() != WL_CONNECTED) {
++                             statusMessage = tr(STR_ANKI_DISCOVER_WIFI);
++                             requestUpdate();
++                             return;
++                           }
++                           runDiscover();
++                         });
++}
++
++void AnkiSettingsActivity::runDiscover() {
++  statusMessage = tr(STR_ANKI_DISCOVERING);
++  requestUpdate();
++
++  std::string url;
++  if (!AnkiMdns::discoverServerUrl(url)) {
++    statusMessage = tr(STR_ANKI_DISCOVER_NONE);
++    requestUpdate();
++    return;
++  }
++
++  ANKI_STORE.setServerUrl(url);
++  std::string error;
++  if (!ANKI_STORE.saveConfig(error)) {
++    statusMessage = error;
++  } else {
++    statusMessage = std::string(tr(STR_ANKI_DISCOVER_OK)) + ": " + url;
++  }
++  requestUpdate();
++}
++
 +void AnkiSettingsActivity::handleSelection() {
 +  if (selectedIndex == 0) {
 +    const std::string current = ANKI_STORE.getServerUrl();
@@ -36357,6 +36685,11 @@ index 0000000..8af1c22
 +  }
 +
 +  if (selectedIndex == 1) {
++    startDiscover();
++    return;
++  }
++
++  if (selectedIndex == 2) {
 +    startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_ANKI_API_TOKEN),
 +                                                                   ANKI_STORE.getApiToken(), 160, InputType::Password),
 +                           [this](const ActivityResult& result) {
@@ -36368,37 +36701,37 @@ index 0000000..8af1c22
 +    return;
 +  }
 +
-+  if (selectedIndex == 2) {
++  if (selectedIndex == 3) {
 +    ANKI_STORE.setLeftHanded(!ANKI_STORE.isLeftHanded());
 +    saveConfig();
 +    return;
 +  }
 +
-+  if (selectedIndex == 3) {
++  if (selectedIndex == 4) {
 +    ANKI_STORE.cycleFontScale();
 +    saveConfig();
 +    return;
 +  }
 +
-+  if (selectedIndex == 4) {
++  if (selectedIndex == 5) {
 +    ANKI_STORE.cycleCardOrientation();
 +    saveConfig();
 +    return;
 +  }
 +
-+  if (selectedIndex == 5) {
++  if (selectedIndex == 6) {
 +    ANKI_STORE.cycleMaxCardsPerDeck();
 +    saveConfig();
 +    return;
 +  }
 +
-+  if (selectedIndex == 6) {
++  if (selectedIndex == 7) {
 +    ANKI_STORE.cycleMaxCardsTotal();
 +    saveConfig();
 +    return;
 +  }
 +
-+  if (selectedIndex == 7) {
++  if (selectedIndex == 8) {
 +    ANKI_STORE.cycleCardFontSource();
 +    saveConfig();
 +    return;
@@ -36420,7 +36753,8 @@ index 0000000..8af1c22
 +  const auto& metrics = UITheme::getInstance().getMetrics();
 +  const auto pageWidth = renderer.getScreenWidth();
 +  const auto pageHeight = renderer.getScreenHeight();
-+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ANKI_SETTINGS));
++  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ANKI_SETTINGS),
++                 ankiFirmwareVersionLabel());
 +
 +  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
 +  const int statusHeight = statusMessage.empty() ? 0 : renderer.getLineHeight(SMALL_FONT_ID) + metrics.verticalSpacing;
@@ -36435,25 +36769,28 @@ index 0000000..8af1c22
 +          return ANKI_STORE.getServerUrl().empty() ? std::string(tr(STR_NOT_SET)) : ANKI_STORE.getServerUrl();
 +        }
 +        if (index == 1) {
-+          return ANKI_STORE.getApiToken().empty() ? std::string(tr(STR_NOT_SET)) : std::string("******");
++          return std::string("mDNS");
 +        }
 +        if (index == 2) {
-+          return std::string(ANKI_STORE.isLeftHanded() ? tr(STR_ANKI_LEFT_HANDED) : tr(STR_ANKI_RIGHT_HANDED));
++          return ANKI_STORE.getApiToken().empty() ? std::string(tr(STR_NOT_SET)) : std::string("******");
 +        }
 +        if (index == 3) {
-+          return std::string(fontScaleLabel(ANKI_STORE.getFontScale()));
++          return std::string(ANKI_STORE.isLeftHanded() ? tr(STR_ANKI_LEFT_HANDED) : tr(STR_ANKI_RIGHT_HANDED));
 +        }
 +        if (index == 4) {
++          return std::string(fontScaleLabel(ANKI_STORE.getFontScale()));
++        }
++        if (index == 5) {
 +          return std::string(ANKI_STORE.isLandscapeCards() ? tr(STR_ANKI_ORIENT_LANDSCAPE)
 +                                                           : tr(STR_ANKI_ORIENT_PORTRAIT));
 +        }
-+        if (index == 5) {
++        if (index == 6) {
 +          return formatCount(ANKI_STORE.getMaxCardsPerDeck());
 +        }
-+        if (index == 6) {
++        if (index == 7) {
 +          return formatCount(ANKI_STORE.getMaxCardsTotal());
 +        }
-+        if (index == 7) {
++        if (index == 8) {
 +          return std::string(ANKI_STORE.usesReaderFont() ? tr(STR_ANKI_CARD_FONT_READER)
 +                                                         : tr(STR_ANKI_CARD_FONT_UI));
 +        }
@@ -36471,10 +36808,10 @@ index 0000000..8af1c22
 +}
 diff --git a/src/activities/anki/AnkiSettingsActivity.h b/src/activities/anki/AnkiSettingsActivity.h
 new file mode 100644
-index 0000000..520983e
+index 0000000..05d75ea
 --- /dev/null
 +++ b/src/activities/anki/AnkiSettingsActivity.h
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,29 @@
 +#pragma once
 +
 +#include <string>
@@ -36492,14 +36829,17 @@ index 0000000..520983e
 +  void render(RenderLock&&) override;
 +
 + private:
-+  // Server, token, handedness, font size, orientation, max/deck, max/total, card font, clear
-+  static constexpr int MENU_ITEMS = 9;
++  // URL, discover, token, handedness, font, orientation, max/deck, max/total, card font, clear
++  static constexpr int MENU_ITEMS = 10;
 +  ButtonNavigator buttonNavigator;
 +  int selectedIndex = 0;
 +  std::string statusMessage;
++  bool wifiActivated = false;
 +
 +  void handleSelection();
 +  void saveConfig();
++  void startDiscover();
++  void runDiscover();
 +};
 diff --git a/src/activities/home/HomeActivity.cpp b/src/activities/home/HomeActivity.cpp
 index 2874326..aeeca9a 100644
@@ -36572,12 +36912,122 @@ index 6d170cd..6c05551 100644
  
    int getMenuItemCount() const;
    bool storeCoverBuffer();    // Store frame buffer for cover image
+diff --git a/src/anki/AnkiFirmwareVersion.h b/src/anki/AnkiFirmwareVersion.h
+new file mode 100644
+index 0000000..7176f25
+--- /dev/null
++++ b/src/anki/AnkiFirmwareVersion.h
+@@ -0,0 +1,26 @@
++#pragma once
++
++#include <cstdio>
++#include <cstring>
++
++// xteink-anki package version (bump with RELEASE_NOTES / dist binary).
++// CROSSPOINT_VERSION is set by PlatformIO (e.g. 1.4.1-anki-2.5.7 on gh_release).
++#ifndef XTEINK_ANKI_FW_VERSION
++#define XTEINK_ANKI_FW_VERSION "2.5.7"
++#endif
++
++// Label for Anki UI headers (static buffer — UI thread only).
++inline const char* ankiFirmwareVersionLabel() {
++  static char buf[72];
++#ifndef CROSSPOINT_VERSION
++  return "anki-" XTEINK_ANKI_FW_VERSION;
++#else
++  // Release builds already tag CROSSPOINT_VERSION with "-anki-…".
++  if (std::strstr(CROSSPOINT_VERSION, "anki") != nullptr) {
++    return CROSSPOINT_VERSION;
++  }
++  // Dev / stock: show both CrossPoint base and Anki package version.
++  std::snprintf(buf, sizeof(buf), "%s · anki-%s", CROSSPOINT_VERSION, XTEINK_ANKI_FW_VERSION);
++  return buf;
++#endif
++}
+diff --git a/src/anki/AnkiMdns.cpp b/src/anki/AnkiMdns.cpp
+new file mode 100644
+index 0000000..c03115e
+--- /dev/null
++++ b/src/anki/AnkiMdns.cpp
+@@ -0,0 +1,53 @@
++#include "AnkiMdns.h"
++
++#include <ESPmDNS.h>
++#include <WiFi.h>
++
++#include <cstdio>
++
++namespace AnkiMdns {
++
++bool discoverServerUrl(std::string& urlOut, std::string* error) {
++  if (WiFi.status() != WL_CONNECTED) {
++    if (error) *error = "wifi";
++    return false;
++  }
++
++  MDNS.end();
++  if (!MDNS.begin("xteink-anki-client")) {
++    if (error) *error = "mdns";
++    return false;
++  }
++
++  // Mac advertises _xteink-anki._tcp → queryService("xteink-anki", "tcp")
++  const int found = MDNS.queryService("xteink-anki", "tcp");
++  if (found <= 0) {
++    MDNS.end();
++    if (error) *error = "none";
++    return false;
++  }
++
++  std::string url;
++  for (int i = 0; i < found; i++) {
++    const IPAddress ip = MDNS.address(i);
++    const uint16_t port = MDNS.port(i);
++    if (port == 0) continue;
++    if (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0) continue;
++    char buf[64];
++    snprintf(buf, sizeof(buf), "http://%u.%u.%u.%u:%u", ip[0], ip[1], ip[2], ip[3],
++             static_cast<unsigned>(port));
++    url = buf;
++    break;
++  }
++  MDNS.end();
++
++  if (url.empty()) {
++    if (error) *error = "none";
++    return false;
++  }
++  urlOut = std::move(url);
++  if (error) error->clear();
++  return true;
++}
++
++}  // namespace AnkiMdns
+diff --git a/src/anki/AnkiMdns.h b/src/anki/AnkiMdns.h
+new file mode 100644
+index 0000000..41bf526
+--- /dev/null
++++ b/src/anki/AnkiMdns.h
+@@ -0,0 +1,13 @@
++#pragma once
++
++#include <string>
++
++// LAN discovery for the Mac Anki add-on (_xteink-anki._tcp).
++// Requires an active Wi-Fi STA connection. Token is never read from mDNS.
++namespace AnkiMdns {
++
++// On success writes http://A.B.C.D:port into urlOut and returns true.
++// On failure urlOut is unchanged and error receives a short reason (optional).
++bool discoverServerUrl(std::string& urlOut, std::string* error = nullptr);
++
++}  // namespace AnkiMdns
 diff --git a/src/anki/AnkiStore.cpp b/src/anki/AnkiStore.cpp
 new file mode 100644
-index 0000000..6e9afa7
+index 0000000..61b8c94
 --- /dev/null
 +++ b/src/anki/AnkiStore.cpp
-@@ -0,0 +1,761 @@
+@@ -0,0 +1,1049 @@
 +#include "AnkiStore.h"
 +
 +#include <ArduinoJson.h>
@@ -36587,7 +37037,9 @@ index 0000000..6e9afa7
 +
 +#include <algorithm>
 +#include <cctype>
++#include <cstdio>
 +#include <cstdlib>
++#include <cstring>
 +#include <limits>
 +
 +const std::string AnkiStore::EMPTY_DECK_NAME;
@@ -36886,10 +37338,13 @@ index 0000000..6e9afa7
 +  const DeckSession& deck = decks[deckIndex];
 +  info.id = deck.id;
 +  info.name = deck.name;
-+  info.remaining = deck.remaining();
-+  info.total = static_cast<uint16_t>(deck.queue.size());
-+  // total here is queue size which may include requeued learning cards;
-+  // remaining is what the UI needs.
++  // Progress = completed / baseline. Again and Hard-on-learning requeue and do
++  // not increment completed, so they must not advance the bar.
++  const uint16_t base =
++      deck.baseline > 0 ? deck.baseline : static_cast<uint16_t>(deck.queue.size());
++  const uint16_t done = std::min(deck.completed, base);
++  info.total = base;
++  info.remaining = base > done ? static_cast<uint16_t>(base - done) : 0;
 +  return info;
 +}
 +
@@ -36944,6 +37399,8 @@ index 0000000..6e9afa7
 +        deck.name = deck.id.rfind("name:", 0) == 0 ? deck.id.substr(5) : std::string("Anki");
 +      }
 +      deck.cursor = deckValue["cursor"] | static_cast<uint16_t>(0);
++      deck.baseline = deckValue["baseline"] | static_cast<uint16_t>(0);
++      deck.completed = deckValue["completed"] | static_cast<uint16_t>(0);
 +
 +      const JsonArrayConst savedQueue = deckValue["queue"];
 +      if (savedQueue.isNull() || savedQueue.size() > std::numeric_limits<uint16_t>::max()) {
@@ -36966,6 +37423,12 @@ index 0000000..6e9afa7
 +        resetSessionState();
 +        return false;
 +      }
++      // Migrate sessions saved before baseline/completed existed.
++      if (deck.baseline == 0) {
++        deck.baseline = static_cast<uint16_t>(deck.queue.size());
++        deck.completed = 0;
++      }
++      if (deck.completed > deck.baseline) deck.completed = deck.baseline;
 +      decks.push_back(std::move(deck));
 +    }
 +  } else {
@@ -36974,6 +37437,8 @@ index 0000000..6e9afa7
 +    deck.id = "default";
 +    deck.name = "Anki";
 +    deck.cursor = doc["cursor"] | static_cast<uint16_t>(0);
++    deck.baseline = doc["baseline"] | static_cast<uint16_t>(0);
++    deck.completed = doc["completed"] | static_cast<uint16_t>(0);
 +    const JsonArrayConst savedQueue = doc["queue"];
 +    if (savedQueue.isNull() || savedQueue.size() > std::numeric_limits<uint16_t>::max()) {
 +      error = "Local Anki queue is invalid";
@@ -36995,6 +37460,11 @@ index 0000000..6e9afa7
 +      resetSessionState();
 +      return false;
 +    }
++    if (deck.baseline == 0) {
++      deck.baseline = static_cast<uint16_t>(deck.queue.size());
++      deck.completed = 0;
++    }
++    if (deck.completed > deck.baseline) deck.completed = deck.baseline;
 +    decks.push_back(std::move(deck));
 +    currentDeck = 0;
 +  }
@@ -37020,6 +37490,8 @@ index 0000000..6e9afa7
 +    deckObject["id"] = deck.id;
 +    deckObject["name"] = deck.name;
 +    deckObject["cursor"] = deck.cursor;
++    deckObject["baseline"] = deck.baseline;
++    deckObject["completed"] = deck.completed;
 +    JsonArray savedQueue = deckObject["queue"].to<JsonArray>();
 +    for (const uint16_t cardIndex : deck.queue) savedQueue.add(cardIndex);
 +  }
@@ -37062,8 +37534,9 @@ index 0000000..6e9afa7
 +  const int protocolVersion = meta["protocol_version"] | 0;
 +  const uint16_t expectedCount = meta["card_count"] | static_cast<uint16_t>(0);
 +  const std::string newBatchId = meta["pull_id"] | std::string("");
-+  if (parseError || type != "meta" || status != "success" || protocolVersion != 2 || newBatchId.empty() ||
-+      expectedCount > MAX_CARDS) {
++  // v2 = decks meta; v3 = same pull shape + flag field / JSON push (add-on 2.5+).
++  if (parseError || type != "meta" || status != "success" ||
++      (protocolVersion != 2 && protocolVersion != 3) || newBatchId.empty() || expectedCount > MAX_CARDS) {
 +    error = "Unsupported or invalid Anki batch";
 +    return false;
 +  }
@@ -37174,9 +37647,11 @@ index 0000000..6e9afa7
 +    Storage.remove(CARDS_PATH);
 +    Storage.remove(INDEX_PATH);
 +    Storage.remove(REVIEWS_PATH);
++    Storage.remove(FLAGS_PATH);
 +    Storage.remove(STATE_PATH);
 +    Storage.remove(PULL_TEMP_PATH);
 +    Storage.remove(INDEX_TEMP_PATH);
++    Storage.remove(PUSH_TEMP_PATH);
 +    resetSessionState();
 +    batchId = newBatchId;
 +    error.clear();
@@ -37186,7 +37661,9 @@ index 0000000..6e9afa7
 +  Storage.remove(CARDS_PATH);
 +  Storage.remove(INDEX_PATH);
 +  Storage.remove(REVIEWS_PATH);
++  Storage.remove(FLAGS_PATH);
 +  Storage.remove(STATE_PATH);
++  Storage.remove(PUSH_TEMP_PATH);
 +  if (!Storage.rename(PULL_TEMP_PATH, CARDS_PATH) || !Storage.rename(INDEX_TEMP_PATH, INDEX_PATH)) {
 +    error = "Could not install downloaded Anki batch";
 +    return false;
@@ -37197,7 +37674,11 @@ index 0000000..6e9afa7
 +  reviewCount = 0;
 +  currentDeck = 0;
 +  decks = std::move(builtDecks);
-+  for (DeckSession& deck : decks) deck.cursor = 0;
++  for (DeckSession& deck : decks) {
++    deck.cursor = 0;
++    deck.baseline = static_cast<uint16_t>(deck.queue.size());
++    deck.completed = 0;
++  }
 +
 +  // Prefer the first deck that still has cards.
 +  for (uint16_t i = 0; i < decks.size(); i++) {
@@ -37268,6 +37749,11 @@ index 0000000..6e9afa7
 +  stripSides(card.front);
 +  stripSides(card.back);
 +  card.isLearning = doc["is_learning"] | false;
++  card.flag = clampFlag(doc["flag"] | 0);
++  uint8_t overrideFlag = 0;
++  if (lookupFlagOverride(card.id, overrideFlag)) {
++    card.flag = overrideFlag;
++  }
 +  error.clear();
 +  return true;
 +}
@@ -37279,6 +37765,251 @@ index 0000000..6e9afa7
 +  }
 +  const DeckSession* deck = currentDeckSession();
 +  return loadCardByIndex(deck->queue[deck->cursor], card, error);
++}
++
++uint8_t AnkiStore::clampFlag(const int value) const {
++  if (value < 0) return 0;
++  if (value > 7) return 7;
++  return static_cast<uint8_t>(value);
++}
++
++bool AnkiStore::lookupFlagOverride(const uint64_t cardId, uint8_t& flag) const {
++  if (!Storage.exists(FLAGS_PATH)) return false;
++  HalFile file;
++  if (!Storage.openFileForRead("ANKI", FLAGS_PATH, file)) return false;
++  std::string line;
++  bool tooLong = false;
++  bool found = false;
++  while (readLine(file, line, 96, tooLong)) {
++    if (tooLong || line.empty()) continue;
++    // card_id,flag
++    const size_t comma = line.find(',');
++    if (comma == std::string::npos) continue;
++    char* end = nullptr;
++    const unsigned long long id = strtoull(line.c_str(), &end, 10);
++    if (!end || end == line.c_str() || static_cast<size_t>(end - line.c_str()) != comma) continue;
++    if (static_cast<uint64_t>(id) != cardId) continue;
++    const int parsed = atoi(line.c_str() + comma + 1);
++    flag = clampFlag(parsed);
++    found = true;
++    // keep scanning so the last write wins
++  }
++  file.close();
++  return found;
++}
++
++bool AnkiStore::writeFlagOverride(const uint64_t cardId, const uint8_t flag, std::string& error) {
++  // Rewrite FLAGS_PATH with this card updated (last entry wins on read; rewrite keeps file small).
++  struct Entry {
++    uint64_t id;
++    uint8_t flag;
++  };
++  Entry entries[64];
++  size_t count = 0;
++  bool replaced = false;
++
++  if (Storage.exists(FLAGS_PATH)) {
++    HalFile in;
++    if (Storage.openFileForRead("ANKI", FLAGS_PATH, in)) {
++      std::string line;
++      bool tooLong = false;
++      while (readLine(in, line, 96, tooLong)) {
++        if (tooLong || line.empty()) continue;
++        const size_t comma = line.find(',');
++        if (comma == std::string::npos) continue;
++        char* end = nullptr;
++        const unsigned long long id = strtoull(line.c_str(), &end, 10);
++        if (!end || end == line.c_str()) continue;
++        const int parsed = atoi(line.c_str() + comma + 1);
++        const uint8_t f = clampFlag(parsed);
++        const uint64_t uid = static_cast<uint64_t>(id);
++        if (uid == cardId) {
++          if (count < 64) {
++            entries[count++] = Entry{uid, clampFlag(flag)};
++            replaced = true;
++          }
++          continue;
++        }
++        if (count < 64) entries[count++] = Entry{uid, f};
++      }
++      in.close();
++    }
++  }
++  if (!replaced && count < 64) {
++    entries[count++] = Entry{cardId, clampFlag(flag)};
++  }
++
++  Storage.remove(FLAGS_PATH);
++  if (count == 0) {
++    error.clear();
++    return true;
++  }
++  HalFile out = Storage.open(FLAGS_PATH, O_WRONLY | O_CREAT | O_TRUNC);
++  if (!out) {
++    error = "Could not write Anki flag overrides";
++    return false;
++  }
++  for (size_t i = 0; i < count; i++) {
++    char row[48];
++    const int length =
++        snprintf(row, sizeof(row), "%llu,%u\n", static_cast<unsigned long long>(entries[i].id),
++                 static_cast<unsigned int>(entries[i].flag));
++    if (length <= 0 || static_cast<size_t>(length) >= sizeof(row) ||
++        out.write(row, static_cast<size_t>(length)) != static_cast<size_t>(length)) {
++      out.close();
++      error = "Could not write Anki flag overrides";
++      return false;
++    }
++  }
++  out.flush();
++  out.close();
++  error.clear();
++  return true;
++}
++
++bool AnkiStore::hasPendingFlags() const {
++  if (!Storage.exists(FLAGS_PATH)) return false;
++  HalFile file;
++  if (!Storage.openFileForRead("ANKI", FLAGS_PATH, file)) return false;
++  const size_t size = file.size();
++  file.close();
++  return size > 0;
++}
++
++uint16_t AnkiStore::getPendingFlagCount() const {
++  if (!Storage.exists(FLAGS_PATH)) return 0;
++  HalFile file;
++  if (!Storage.openFileForRead("ANKI", FLAGS_PATH, file)) return 0;
++  std::string line;
++  bool tooLong = false;
++  uint16_t count = 0;
++  while (readLine(file, line, 96, tooLong)) {
++    if (!tooLong && !line.empty() && line.find(',') != std::string::npos) count++;
++  }
++  file.close();
++  return count;
++}
++
++bool AnkiStore::toggleCurrentCardFlag(uint8_t& newFlag, std::string& error) {
++  AnkiCard card;
++  if (!loadCurrentCard(card, error)) return false;
++  // X4 UI toggles red flag only (0 ↔ 1). Other Anki colours (2–7) from pull clear to 0 first.
++  newFlag = (card.flag == 0) ? 1 : 0;
++  if (!writeFlagOverride(card.id, newFlag, error)) return false;
++  return true;
++}
++
++bool AnkiStore::buildPushJson(std::string& error) const {
++  if (!hasPendingUpload()) {
++    error = "Nothing to upload";
++    return false;
++  }
++
++  Storage.remove(PUSH_TEMP_PATH);
++  HalFile out = Storage.open(PUSH_TEMP_PATH, O_WRONLY | O_CREAT | O_TRUNC);
++  if (!out) {
++    error = "Could not create Anki push body";
++    return false;
++  }
++
++  auto writeStr = [&](const char* s) -> bool {
++    const size_t n = strlen(s);
++    return out.write(s, n) == n;
++  };
++
++  if (!writeStr("{\"batch_id\":\"")) {
++    out.close();
++    error = "Could not write Anki push body";
++    return false;
++  }
++  // batch_id is printable ASCII (protocol); escape is unnecessary.
++  if (!writeStr(batchId.c_str()) || !writeStr("\",\"reviews\":[")) {
++    out.close();
++    error = "Could not write Anki push body";
++    return false;
++  }
++
++  bool firstReview = true;
++  if (Storage.exists(REVIEWS_PATH)) {
++    HalFile reviews;
++    if (Storage.openFileForRead("ANKI", REVIEWS_PATH, reviews)) {
++      std::string line;
++      bool tooLong = false;
++      while (readLine(reviews, line, 128, tooLong)) {
++        if (tooLong || line.empty()) continue;
++        // card_id,ease,,duration_ms
++        unsigned long long cardId = 0;
++        unsigned ease = 0;
++        unsigned long duration = 0;
++        if (sscanf(line.c_str(), "%llu,%u,,%lu", &cardId, &ease, &duration) < 2) {
++          // try with optional answered_at field empty variants
++          if (sscanf(line.c_str(), "%llu,%u", &cardId, &ease) < 2) continue;
++        }
++        if (ease < 1 || ease > 4 || cardId == 0) continue;
++        char item[96];
++        const int n = snprintf(item, sizeof(item), "%s{\"card_id\":%llu,\"ease\":%u,\"duration_ms\":%lu}",
++                               firstReview ? "" : ",", cardId, ease, duration);
++        if (n <= 0 || static_cast<size_t>(n) >= sizeof(item) ||
++            out.write(item, static_cast<size_t>(n)) != static_cast<size_t>(n)) {
++          reviews.close();
++          out.close();
++          error = "Could not write Anki push reviews";
++          return false;
++        }
++        firstReview = false;
++      }
++      reviews.close();
++    }
++  }
++
++  if (!writeStr("],\"flags\":[")) {
++    out.close();
++    error = "Could not write Anki push body";
++    return false;
++  }
++
++  bool firstFlag = true;
++  if (Storage.exists(FLAGS_PATH)) {
++    HalFile flags;
++    if (Storage.openFileForRead("ANKI", FLAGS_PATH, flags)) {
++      std::string line;
++      bool tooLong = false;
++      while (readLine(flags, line, 96, tooLong)) {
++        if (tooLong || line.empty()) continue;
++        unsigned long long cardId = 0;
++        unsigned flag = 0;
++        if (sscanf(line.c_str(), "%llu,%u", &cardId, &flag) < 2 || cardId == 0) continue;
++        if (flag > 7) flag = 7;
++        char item[72];
++        const int n = snprintf(item, sizeof(item), "%s{\"card_id\":%llu,\"flag\":%u}", firstFlag ? "" : ",",
++                               cardId, flag);
++        if (n <= 0 || static_cast<size_t>(n) >= sizeof(item) ||
++            out.write(item, static_cast<size_t>(n)) != static_cast<size_t>(n)) {
++          flags.close();
++          out.close();
++          error = "Could not write Anki push flags";
++          return false;
++        }
++        firstFlag = false;
++      }
++      flags.close();
++    }
++  }
++
++  if (!writeStr("]}")) {
++    out.close();
++    error = "Could not write Anki push body";
++    return false;
++  }
++  out.flush();
++  out.close();
++  if (firstReview && firstFlag) {
++    Storage.remove(PUSH_TEMP_PATH);
++    error = "Nothing to upload";
++    return false;
++  }
++  error.clear();
++  return true;
 +}
 +
 +bool AnkiStore::recordReview(const uint8_t ease, const uint32_t durationMs, std::string& error) {
@@ -37317,10 +38048,16 @@ index 0000000..6e9afa7
 +  deck->cursor++;
 +  reviewCount++;
 +
-+  if (ease == 1 || (ease == 2 && card.isLearning)) {
++  // Again always, and Hard on learning steps: re-insert into the queue. These
++  // do not count toward progress (baseline/completed).
++  const bool requeue = (ease == 1) || (ease == 2 && card.isLearning);
++  if (requeue) {
 +    const size_t gap = ease == 1 ? 5 : 10;
 +    const size_t insertAt = std::min(deck->queue.size(), static_cast<size_t>(deck->cursor) + gap);
 +    deck->queue.insert(deck->queue.begin() + insertAt, reviewedCardIndex);
++  } else {
++    if (deck->baseline == 0) deck->baseline = static_cast<uint16_t>(deck->queue.size());
++    if (deck->completed < deck->baseline) deck->completed++;
 +  }
 +
 +  return saveSession(error);
@@ -37328,7 +38065,8 @@ index 0000000..6e9afa7
 +
 +bool AnkiStore::clearSession(std::string& error) {
 +  bool ok = true;
-+  for (const char* path : {STATE_PATH, CARDS_PATH, INDEX_PATH, REVIEWS_PATH, PULL_TEMP_PATH, INDEX_TEMP_PATH}) {
++  for (const char* path : {STATE_PATH, CARDS_PATH, INDEX_PATH, REVIEWS_PATH, FLAGS_PATH, PUSH_TEMP_PATH,
++                           PULL_TEMP_PATH, INDEX_TEMP_PATH}) {
 +    if (Storage.exists(path) && !Storage.remove(path)) ok = false;
 +  }
 +  resetSessionState();
@@ -37341,10 +38079,10 @@ index 0000000..6e9afa7
 +}
 diff --git a/src/anki/AnkiStore.h b/src/anki/AnkiStore.h
 new file mode 100644
-index 0000000..b0d64a0
+index 0000000..e12cce7
 --- /dev/null
 +++ b/src/anki/AnkiStore.h
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,158 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -37356,6 +38094,8 @@ index 0000000..b0d64a0
 +  std::string front;
 +  std::string back;
 +  bool isLearning = false;
++  // Anki user flag 0–7 (0 = none). X4 toggles 0 ↔ 1 (red flag).
++  uint8_t flag = 0;
 +};
 +
 +struct AnkiDeckInfo {
@@ -37368,6 +38108,8 @@ index 0000000..b0d64a0
 +class AnkiStore {
 + public:
 +  static constexpr const char* PULL_TEMP_PATH = "/.crosspoint/anki-pull.tmp";
++  static constexpr const char* FLAGS_PATH = "/.crosspoint/anki-flags.csv";
++  static constexpr const char* PUSH_TEMP_PATH = "/.crosspoint/anki-push.json";
 +
 +  static AnkiStore& getInstance();
 +
@@ -37413,17 +38155,25 @@ index 0000000..b0d64a0
 +  bool installPulledBatch(std::string& error);
 +  bool loadCurrentCard(AnkiCard& card, std::string& error) const;
 +  bool recordReview(uint8_t ease, uint32_t durationMs, std::string& error);
++  // Toggle Anki red flag (0 ↔ 1) on the current card; persists until push/clear.
++  bool toggleCurrentCardFlag(uint8_t& newFlag, std::string& error);
 +  bool clearSession(std::string& error);
++
++  // Build JSON push body (reviews + dirty flags) to PUSH_TEMP_PATH for streaming upload.
++  bool buildPushJson(std::string& error) const;
 +
 +  bool hasBatch() const { return cardCount > 0; }
 +  bool hasRemainingCards() const;
 +  bool hasAnyRemainingCards() const;
 +  bool hasPendingReviews() const { return reviewCount > 0; }
++  bool hasPendingFlags() const;
++  bool hasPendingUpload() const { return hasPendingReviews() || hasPendingFlags(); }
 +  bool batchComplete() const { return hasBatch() && !hasAnyRemainingCards(); }
 +  uint16_t getCardCount() const { return cardCount; }
 +  uint16_t getRemainingCount() const;
 +  uint16_t getAnyRemainingCount() const;
 +  uint16_t getReviewCount() const { return reviewCount; }
++  uint16_t getPendingFlagCount() const;
 +
 +  uint16_t getDeckCount() const { return static_cast<uint16_t>(decks.size()); }
 +  uint16_t getCurrentDeckIndex() const { return currentDeck; }
@@ -37437,6 +38187,10 @@ index 0000000..b0d64a0
 +    std::string name;
 +    std::vector<uint16_t> queue;
 +    uint16_t cursor = 0;
++    // Progress UI: baseline = cards at pull; completed only when not requeued
++    // (Again / Hard-on-learning re-insert and must not fill the progress bar).
++    uint16_t baseline = 0;
++    uint16_t completed = 0;
 +
 +    uint16_t remaining() const {
 +      return cursor < queue.size() ? static_cast<uint16_t>(queue.size() - cursor) : 0;
@@ -37456,6 +38210,10 @@ index 0000000..b0d64a0
 +  static constexpr uint16_t MAX_DECKS = 64;
 +  static constexpr size_t MAX_DECK_ID_CHARS = 32;
 +  static constexpr size_t MAX_DECK_NAME_CHARS = 64;
++
++  bool lookupFlagOverride(uint64_t cardId, uint8_t& flag) const;
++  bool writeFlagOverride(uint64_t cardId, uint8_t flag, std::string& error);
++  uint8_t clampFlag(int value) const;
 +
 +  std::string serverUrl;
 +  std::string apiToken;
@@ -37481,13 +38239,14 @@ index 0000000..b0d64a0
 +  const DeckSession* currentDeckSession() const;
 +};
 +
++
 +#define ANKI_STORE AnkiStore::getInstance()
 diff --git a/src/anki/AnkiSyncClient.cpp b/src/anki/AnkiSyncClient.cpp
 new file mode 100644
-index 0000000..8fa2c01
+index 0000000..f35dd4f
 --- /dev/null
 +++ b/src/anki/AnkiSyncClient.cpp
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,299 @@
 +#include "AnkiSyncClient.h"
 +
 +#include <ArduinoJson.h>
@@ -37557,7 +38316,7 @@ index 0000000..8fa2c01
 +  lastHttpCode = 0;
 +  detail.clear();
 +  if (!ANKI_STORE.configured()) return Error::NOT_CONFIGURED;
-+  if (ANKI_STORE.hasPendingReviews()) return Error::LOCAL_REVIEWS_PENDING;
++  if (ANKI_STORE.hasPendingUpload()) return Error::LOCAL_REVIEWS_PENDING;
 +  if (!validBaseUrl(ANKI_STORE.getServerUrl())) return Error::INVALID_URL;
 +
 +  char pullUrl[384];
@@ -37649,34 +38408,49 @@ index 0000000..8fa2c01
 +  lastHttpCode = 0;
 +  detail.clear();
 +  if (!ANKI_STORE.configured()) return Error::NOT_CONFIGURED;
-+  if (!ANKI_STORE.hasPendingReviews()) return Error::NO_REVIEWS;
++  if (!ANKI_STORE.hasPendingUpload()) return Error::NO_REVIEWS;
 +  if (!validBaseUrl(ANKI_STORE.getServerUrl())) return Error::INVALID_URL;
 +
-+  HalFile reviews = Storage.open("/.crosspoint/anki-reviews.csv", O_RDONLY);
-+  if (!reviews) return Error::STORAGE_ERROR;
-+  const size_t contentLength = reviews.size();
-+  if (contentLength == 0) return Error::NO_REVIEWS;
++  std::string buildError;
++  if (!ANKI_STORE.buildPushJson(buildError)) {
++    detail = buildError;
++    return Error::NO_REVIEWS;
++  }
++
++  HalFile body;
++  if (!Storage.openFileForRead("ANKI", AnkiStore::PUSH_TEMP_PATH, body)) {
++    return Error::STORAGE_ERROR;
++  }
++  const size_t contentLength = body.size();
++  if (contentLength == 0) {
++    body.close();
++    Storage.remove(AnkiStore::PUSH_TEMP_PATH);
++    return Error::NO_REVIEWS;
++  }
 +
 +  const std::string url = ANKI_STORE.getServerUrl() + "/push";
 +  esp_http_client_handle_t client = createClient(url, HTTP_METHOD_POST);
 +  if (!client || !setCommonHeaders(client, "application/json") ||
-+      esp_http_client_set_header(client, "Content-Type", "text/csv; charset=utf-8") != ESP_OK ||
++      esp_http_client_set_header(client, "Content-Type", "application/json; charset=utf-8") != ESP_OK ||
 +      esp_http_client_set_header(client, "X-Xteink-Batch-ID", ANKI_STORE.getBatchId().c_str()) != ESP_OK) {
++    body.close();
 +    closeClient(client);
 +    return Error::NETWORK_ERROR;
 +  }
 +
 +  esp_err_t result = esp_http_client_open(client, contentLength);
 +  if (result != ESP_OK) {
++    body.close();
 +    closeClient(client);
 +    detail = esp_err_to_name(result);
 +    return Error::NETWORK_ERROR;
 +  }
 +
 +  std::array<uint8_t, HTTP_BUFFER_SIZE> buffer;
-+  while (reviews.available()) {
-+    const int read = reviews.read(buffer.data(), buffer.size());
++  while (body.available()) {
++    const int read = body.read(buffer.data(), buffer.size());
 +    if (read <= 0) {
++      body.close();
 +      closeClient(client);
 +      return Error::STORAGE_ERROR;
 +    }
@@ -37686,19 +38460,21 @@ index 0000000..8fa2c01
 +      const int chunk = esp_http_client_write(client, reinterpret_cast<const char*>(buffer.data()) + written,
 +                                              static_cast<int>(read) - written);
 +      if (chunk <= 0) {
++        body.close();
 +        closeClient(client);
 +        return Error::NETWORK_ERROR;
 +      }
 +      written += chunk;
 +    }
 +  }
-+  reviews.close();
++  body.close();
 +
 +  esp_http_client_fetch_headers(client);
 +  lastHttpCode = esp_http_client_get_status_code(client);
 +  std::string response;
 +  const bool responseRead = readResponse(client, response);
 +  closeClient(client);
++  Storage.remove(AnkiStore::PUSH_TEMP_PATH);
 +
 +  if (lastHttpCode == 401 || lastHttpCode == 403) return Error::AUTH_FAILED;
 +  if (lastHttpCode != 200) {
@@ -37716,7 +38492,6 @@ index 0000000..8fa2c01
 +
 +  const std::string status = doc["status"] | std::string("");
 +  if (status == "partial") {
-+    // Batch was accepted; keep a short human summary instead of raw JSON.
 +    const int processed = doc["processed"] | 0;
 +    int rejectedCount = 0;
 +    if (doc["rejected"].is<JsonArray>()) {
@@ -37725,8 +38500,6 @@ index 0000000..8fa2c01
 +    char summary[96];
 +    snprintf(summary, sizeof(summary), "%d ok, %d skipped", processed, rejectedCount);
 +    detail = summary;
-+    // Clear local reviews — the server finished this batch_id (partial still
-+    // marks it complete). Retrying would only return "duplicate".
 +    std::string clearError;
 +    if (!ANKI_STORE.clearSession(clearError)) {
 +      detail += std::string("; ") + clearError;
@@ -37750,9 +38523,9 @@ index 0000000..8fa2c01
 +    case Error::NOT_CONFIGURED:
 +      return "Mac server URL or API token is missing";
 +    case Error::LOCAL_REVIEWS_PENDING:
-+      return "Upload pending reviews before downloading a new batch";
++      return "Upload pending reviews/flags before downloading a new batch";
 +    case Error::NO_REVIEWS:
-+      return "No reviews to upload";
++      return "No reviews or flags to upload";
 +    case Error::INVALID_URL:
 +      return "Server URL must begin with http:// or https://";
 +    case Error::NETWORK_ERROR:

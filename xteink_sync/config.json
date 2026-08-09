@@ -1,6 +1,8 @@
 {
     "bind_address": "0.0.0.0",
     "port": 5050,
+    "mdns_enabled": true,
+    "mdns_name": "Xteink Anki",
     "api_token": "",
     "max_cards": 250,
     "max_total_cards": 1000,

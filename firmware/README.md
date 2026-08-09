@@ -23,15 +23,29 @@ Der Patch ergänzt:
   (werden beim Pull an das Add-on gesendet),
 - Schriftgröße (Klein/Mittel/Groß), Ausrichtung (Hochkant/Quer), Händigkeit,
 - Blättern über die Seitentasten (Page Up/Down),
+- **Flag:** X4-Seitentasten teilen sich **einen** ADC → Hoch+Runter gleichzeitig
+  geht hardwareseitig **nicht**. Stattdessen:
+  - **Bestätigen + Hoch/Runter** (Chord über zwei ADCs), oder
+  - **Hoch oder Runter ~0,55 s halten** (Kurzdruck blättert beim Loslassen)
+  → Rotflag 0↔1; Icon rechts der Progress-Bar; Sync Pull/Push,
+- **Progress:** zählt nur abgeschlossene Karten (Gut/Einfach bzw. Hard ohne
+  Requeue); **Nochmal** und **Schwer** auf Lernkarten füllen den Balken nicht,
+- **Version:** Anki-Menü + Anki-Einstellungen zeigen Firmware-Version im Header
+  (Release: `1.4.1-anki-2.5.7`; auch Boot/System-Einstellungen),
 - Platzhalter bei leeren Kartenseiten; Mac-Add-on mit Feld-Fallback,
 - Bewertungen `Nochmal`, `Schwer`, `Gut` und `Einfach`,
 - erneute lokale Einplanung von Lernkarten nach `Nochmal`/`Schwer`,
-- fehlertoleranten Upload mit Batch-ID sowie
+- fehlertoleranten Upload mit Batch-ID (JSON: Reviews + Flags) sowie
 - Eingabe von Mac-Serveradresse und API-Token am X4 oder im CrossPoint-Webzugang.
 
 ## Bauen
 
-Benötigt werden Git, Python 3.10 oder neuer sowie pioarduino/PlatformIO.
+Benötigt werden Git, Python 3.10 oder neuer sowie pioarduino/PlatformIO
+(`pio` im PATH oder `~/.platformio/penv/bin/pio`).
+
+**Agent/Release-Regel:** Nach jeder Firmware-Änderung (Patch, UI, Sync-Protokoll)
+wird `./firmware/build.sh` ausgeführt und `dist/crosspoint-1.4.1-xteink-anki.bin`
+(+ `dist/SHA256SUMS`) aktualisiert — nicht nur der Patch.
 
 ```bash
 ./firmware/build.sh
