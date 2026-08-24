@@ -21,11 +21,11 @@ senden.
   (macOS: `dns-sd`; sonst optional Python-Paket `zeroconf`). Der API-Token
   wird **nicht** veröffentlicht.
 - `mdns_name`: Anzeigename der mDNS-Instanz (Standard: `Xteink Anki`).
-- `max_cards`: Standard-Maximum **pro fälligem Stapel** (250). Der X4 kann
+- `max_cards`: Standard-Maximum **pro fälligem Stapel** (9999). Der X4 kann
   beim Pull mit `?max_cards=` überschreiben (Web-UI oder
   **Anki → Anki-Einstellungen → Max. Karten / Stapel**).
-- `max_total_cards`: Standard-Gesamtlimit über alle Stapel (1000). X4 kann mit
-  `?max_total=` überschreiben (**Max. Karten gesamt**). Harte Obergrenze 1000.
+- `max_total_cards`: Standard-Gesamtlimit über alle Stapel (9999). X4 kann mit
+  `?max_total=` überschreiben (**Max. Karten gesamt**). Harte Obergrenze 9999.
   Fehlt der Key in einer älteren Config, wird er beim Add-on-Start ergänzt.
 - `max_text_chars`: maximale Textlänge pro Karten-Seite.
 - `max_reviews_per_push`: maximale Anzahl Bewertungen in einem Push.
