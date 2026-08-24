@@ -15,13 +15,7 @@ Upstream base: <https://github.com/crosspoint-reader/crosspoint-reader>
 
 - Tag: `1.6.0rc` (the 1.6.0 beta RC line)
 - Commit: `6a501bba544d9e80598811dbdf2134d1bcb1ebd2`
-- Reported firmware version: `1.6.0rc-anki-2.7.0` (from the patch)
-
-> **The committed `.bin` is still the `anki-2.6.0` build.** The card-flip
-> performance work in `anki-2.7.0` landed in the patch only; the image here has
-> not been rebuilt yet, so it still reports `1.6.0rc-anki-2.6.0` in the Anki
-> header. Run `./custom-bin-builds/build.sh` to produce the 2.7.0 image (and
-> refresh `SHA256SUMS`) before flashing if you want that change.
+- Reported firmware version: `1.6.0rc-anki-2.7.0`
 
 ## Device compatibility
 
@@ -84,7 +78,7 @@ glyphs before copying the image here.
   medium size) and deliberately skip the Arabic presentation forms — UI_18 is
   never used for menus, and those forms cost roughly 700 KB of flash the app
   partition cannot spare.
-- Build footprint: RAM 16.8% (54,996 B static), Flash 78.5% (5,147,117 B of the
+- Build footprint: RAM 16.8% (54,996 B static), Flash 78.5% (5,147,847 B of the
   6,553,600-byte app partition — about 1.34 MB free).
 - Verified by rebuilding from a fresh clone with only the committed patch: same
   size and same flash figure, differing only in a handful of bytes in the ESP

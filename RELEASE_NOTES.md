@@ -41,11 +41,6 @@ No behaviour change for Latin cards on the built-in font, and no layout change
 beyond sub-pixel differences from measuring advance width instead of the ink
 box. Flash required.
 
-> **The committed `.bin` has not been rebuilt for this release** — it is still
-> the `anki-2.6.0` image and reports that version in the Anki header. Run
-> `./custom-bin-builds/build.sh` to produce the 2.7.0 image and refresh
-> `SHA256SUMS`.
-
 # v2.6.0 — stripped-down review pane
 
 ## Firmware
