@@ -39,11 +39,32 @@ that the built-in downloader (**Settings → System → Manage Fonts**) currentl
 offers no CJK family: every family in the official catalog is Latin, Cyrillic
 and Greek only. So you convert one yourself.
 
-### Convert a CJK font
+### Convert a CJK font — web builder (easiest)
 
-You need the CrossPoint source checkout (`prepare.sh` leaves one in
-`.firmware-build/`) and a CJK font file — Noto Sans SC, Source Han Sans, or any
-`.ttf`/`.otf` with the coverage you need.
+1. Go to <https://crosspointreader.com/fonts> and open the **SD-card font
+   builder** form.
+2. Upload your CJK font — Noto Sans SC, Source Han Sans, or any `.ttf`/`.otf`
+   with the coverage you need. You can upload up to four styles (regular, bold,
+   italic, bold-italic); regular alone is enough to start, and bold keeps bold
+   card text Chinese rather than falling back.
+3. Set **family name** (e.g. `NotoSansSC`), **point sizes**
+   `8,10,12,14,16,18`, and the Unicode range to the **CJK** preset
+   (~22,000 codepoints).
+4. Download the generated `.cpfont` files.
+
+No firmware reflash is needed, and no local toolchain — upstream states the
+builder runs `lib/EpdFont/scripts/fontconvert_sdcard.py` unmodified, so the
+output matches a local host build.
+
+**Include every one of those six sizes.** They are not interchangeable: 8/10/12
+back the user interface, 12–18 back the reader, and **18 is what Anki's
+*Medium* card size uses**. A family missing 18 pt shows boxes on Medium while
+Small and Large still work.
+
+### Convert locally instead (optional)
+
+If you would rather not upload a font file, the same script runs from a
+CrossPoint source checkout (`prepare.sh` leaves one in `.firmware-build/`):
 
 ```bash
 python3 lib/EpdFont/scripts/fontconvert_sdcard.py \
@@ -55,22 +76,7 @@ python3 lib/EpdFont/scripts/fontconvert_sdcard.py \
   --output-dir ./NotoSansSC/
 ```
 
-The `cjk` preset covers roughly 22,000 codepoints. Generate a `bold` pass into
-the same folder if you want bold card text to stay Chinese.
-
-**Include every size in that list.** The sizes are not interchangeable: 8/10/12
-back the user interface, 12–18 back the reader, and **18 is what Anki's
-*Medium* card size uses**. A family missing 18 pt shows boxes on Medium while
-Small and Large still work.
-
-### Put it on the device
-
-Either copy the folder to the SD card at `/.fonts/NotoSansSC/` (or `/fonts/…`
-if you prefer a visible folder), or upload the `.cpfont` files through
-**File Transfer → Fonts** in the web interface.
-
-Then select it: **Settings → Reader → Font Family → NotoSansSC**. That single
-choice also arms the CJK fallback for the interface and for Anki cards.
+Run it again with `--style bold` into the same folder for bold coverage.
 
 ## 3. Install the Anki add-on
 
