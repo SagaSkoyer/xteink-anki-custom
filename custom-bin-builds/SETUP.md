@@ -136,8 +136,31 @@ the URL stable.
 3. **Learn cards** — fully offline; turn Wi-Fi off if you like.
 4. **Upload reviews** — when you are done and Anki is open again.
 
-Reviews live on the SD card under `/.crosspoint/anki-*` and are only deleted
-once Anki confirms the batch, so a failed upload loses nothing.
+**No Wi-Fi, or don't want to pair right now?** **Load today's cards from SD**
+does the same thing from a file instead of the network. It reads the newest
+`*.ndjson` file in a `system-due/` folder at the SD card root (created
+automatically the first time you open the Anki menu) and deletes it once
+installed. Two ways to put a file there:
+
+- **Real Anki cards, full round trip** — in Anki: **Tools → eInk (local)**.
+  The **Export** tab writes checked decks' due cards into `system-due/`; the
+  **Import** tab later reads graded results back out of a `system-answers/`
+  folder the device writes to as you review, and applies them to your real
+  Anki collection — the same grading logic a normal Wi-Fi "Upload reviews"
+  push uses, just via the SD card instead of the network. See
+  `../anki-addon/README.md`.
+- **Synthetic cards, one-way only** — `../sd-import/` builds a `system-due/`
+  file from a plain CSV, for offline flashcards that don't need to exist in
+  Anki at all. Grading these cannot be imported back — see the caveat in
+  `sd-import/README.md`.
+
+Either way, "parent folder" in the Tools → eInk (local) dialog means wherever
+your computer mounts the SD card (e.g. `/Volumes/SDCARD` on a Mac) — plug the
+card into a reader, not the device itself, to run Export/Import.
+
+Reviews live on the SD card under `/.crosspoint/anki-*` (and, mirrored, under
+`system-answers/`) and are only deleted from the internal log once Anki
+confirms a Wi-Fi upload batch, so a failed upload loses nothing.
 
 **While reviewing** (bottom buttons left→right = Back, Confirm, Left, Right;
 top = the two side page buttons):

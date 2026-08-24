@@ -5,11 +5,14 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import os
+import re
 import secrets
 import socket
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -38,6 +41,7 @@ from .protocol import (
     PushBatch,
     Review,
     encode_pull_ndjson,
+    parse_answers_ndjson,
     parse_push_payload,
 )
 from . import textutil
@@ -85,6 +89,25 @@ TRANSLATIONS = {
         "status_stopped": "The Xteink API could not be started:\n{error}",
         "yes": "yes",
         "no": "no",
+        "local_sync_menu": "eInk (local)",
+        "local_sync_title": "eInk (local)",
+        "local_sync_export_tab": "Export",
+        "local_sync_import_tab": "Import",
+        "local_sync_folder_label": "Parent folder (e.g. the SD card's mount point):",
+        "local_sync_browse": "Browse...",
+        "local_sync_deck_label": "Decks to export (due cards only):",
+        "local_sync_export_button": "Export",
+        "local_sync_import_button": "Import",
+        "local_sync_no_folder": "Choose a parent folder first.",
+        "local_sync_no_decks": "Select at least one deck.",
+        "local_sync_export_saved": "Saved {count} card(s) across {decks} deck(s) to:\n{path}",
+        "local_sync_export_empty": "No due cards to export in the selected deck(s).",
+        "local_sync_export_error": "Could not export cards:\n{error}",
+        "local_sync_import_done": "Imported {processed} review(s)/flag(s) from {files} file(s).",
+        "local_sync_import_rejected": "\n{rejected} could not be applied (see the Anki log).",
+        "local_sync_import_skipped": "\n{skipped} file(s) skipped (already imported or unreadable).",
+        "local_sync_import_empty": "No system-answers files found to import.",
+        "local_sync_import_error": "Could not import reviews:\n{error}",
     },
     "de": {
         "menu_action": "Xteink Status",
@@ -99,6 +122,25 @@ TRANSLATIONS = {
         "status_stopped": "Die Xteink API konnte nicht gestartet werden:\n{error}",
         "yes": "ja",
         "no": "nein",
+        "local_sync_menu": "eInk (lokal)",
+        "local_sync_title": "eInk (lokal)",
+        "local_sync_export_tab": "Export",
+        "local_sync_import_tab": "Import",
+        "local_sync_folder_label": "Übergeordneter Ordner (z. B. der Einhängepunkt der SD-Karte):",
+        "local_sync_browse": "Durchsuchen...",
+        "local_sync_deck_label": "Zu exportierende Stapel (nur fällige Karten):",
+        "local_sync_export_button": "Exportieren",
+        "local_sync_import_button": "Importieren",
+        "local_sync_no_folder": "Zuerst einen übergeordneten Ordner wählen.",
+        "local_sync_no_decks": "Mindestens einen Stapel auswählen.",
+        "local_sync_export_saved": "{count} Karte(n) in {decks} Stapel(n) gespeichert unter:\n{path}",
+        "local_sync_export_empty": "Keine fälligen Karten in den gewählten Stapeln.",
+        "local_sync_export_error": "Karten konnten nicht exportiert werden:\n{error}",
+        "local_sync_import_done": "{processed} Bewertung(en)/Flag(s) aus {files} Datei(en) importiert.",
+        "local_sync_import_rejected": "\n{rejected} konnten nicht angewendet werden (siehe Anki-Log).",
+        "local_sync_import_skipped": "\n{skipped} Datei(en) übersprungen (bereits importiert oder unlesbar).",
+        "local_sync_import_empty": "Keine system-answers-Dateien zum Importieren gefunden.",
+        "local_sync_import_error": "Bewertungen konnten nicht importiert werden:\n{error}",
     },
     "el": {
         "menu_action": "Κατάσταση Xteink",
@@ -113,6 +155,25 @@ TRANSLATIONS = {
         "status_stopped": "Δεν ήταν δυνατή η εκκίνηση του Xteink API:\n{error}",
         "yes": "ναι",
         "no": "όχι",
+        "local_sync_menu": "eInk (τοπικά)",
+        "local_sync_title": "eInk (τοπικά)",
+        "local_sync_export_tab": "Εξαγωγή",
+        "local_sync_import_tab": "Εισαγωγή",
+        "local_sync_folder_label": "Γονικός φάκελος (π.χ. το σημείο προσάρτησης της κάρτας SD):",
+        "local_sync_browse": "Αναζήτηση...",
+        "local_sync_deck_label": "Τράπουλες προς εξαγωγή (μόνο ληξιπρόθεσμες κάρτες):",
+        "local_sync_export_button": "Εξαγωγή",
+        "local_sync_import_button": "Εισαγωγή",
+        "local_sync_no_folder": "Επιλέξτε πρώτα έναν γονικό φάκελο.",
+        "local_sync_no_decks": "Επιλέξτε τουλάχιστον μία τράπουλα.",
+        "local_sync_export_saved": "Αποθηκεύτηκαν {count} κάρτ(ες) σε {decks} τράπουλα/ες στο:\n{path}",
+        "local_sync_export_empty": "Δεν υπάρχουν ληξιπρόθεσμες κάρτες στις επιλεγμένες τράπουλες.",
+        "local_sync_export_error": "Δεν ήταν δυνατή η εξαγωγή καρτών:\n{error}",
+        "local_sync_import_done": "Έγινε εισαγωγή {processed} βαθμολογίας/σημαίας από {files} αρχείο/α.",
+        "local_sync_import_rejected": "\n{rejected} δεν ήταν δυνατό να εφαρμοστούν (δείτε το αρχείο καταγραφής του Anki).",
+        "local_sync_import_skipped": "\n{skipped} αρχείο/α παραλείφθηκαν (ήδη εισήχθησαν ή δεν ήταν αναγνώσιμα).",
+        "local_sync_import_empty": "Δεν βρέθηκαν αρχεία system-answers για εισαγωγή.",
+        "local_sync_import_error": "Δεν ήταν δυνατή η εισαγωγή βαθμολογιών:\n{error}",
     },
 }
 
@@ -173,6 +234,30 @@ def _deck_display_name(full_name: str) -> str:
     if len(name) > 60:
         name = "…" + name[-59:]
     return name
+
+
+def _deck_and_descendant_ids(collection: Any, root_deck_id: int) -> "set[int]":
+    """All deck ids in root_deck_id's subtree (inclusive).
+
+    Anki decks nest by name ("Parent::Child"), so this walks
+    all_names_and_ids() by name prefix rather than a version-specific
+    children-lookup API -- stable across the Anki versions this add-on
+    supports.
+    """
+    try:
+        root_name = collection.decks.name(root_deck_id)
+    except Exception:
+        return {root_deck_id}
+
+    ids = {root_deck_id}
+    prefix = root_name + "::"
+    try:
+        for entry in collection.decks.all_names_and_ids():
+            if entry.name == root_name or entry.name.startswith(prefix):
+                ids.add(int(entry.id))
+    except Exception:
+        LOGGER.exception("Could not enumerate Anki decks for eInk export scoping")
+    return ids
 
 
 def _clamp_int(value: int, minimum: int, maximum: int) -> int:
@@ -674,6 +759,166 @@ class XteinkAddon:
             "max_total_cards": limits[1],
         }
 
+    def export_due_to_folder(
+        self,
+        deck_ids: List[int],
+        parent_folder: str,
+        max_cards_per_deck: Optional[int] = None,
+        max_total_cards: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Write the selected decks' (+ their subdecks') due cards into
+        <parent_folder>/system-due/, in the same NDJSON wire format a device
+        pull receives over HTTP -- the file the device's "Load today's cards
+        from SD" reads directly once the SD card is plugged in.
+
+        Reuses _collect_due_cards() unchanged -- the identical card-collection
+        logic pull_cards() runs for a network pull -- then narrows the result
+        to the union of the requested decks' subtrees before encoding, all
+        inside the same QueryOp so the deck-id lookups stay on Anki's
+        collection-op thread. Must be called off the Qt main thread: like
+        pull_cards(), it blocks on a Future that a main-thread-scheduled
+        QueryOp resolves, which would deadlock if the caller were already on
+        the main thread.
+
+        The filename is UTC-timestamp-prefixed so it sorts after any earlier
+        export: the device (findNewestSdDueFile() in AnkiStore.cpp) picks the
+        lexicographically greatest *.ndjson in system-due/, treating that as
+        "most recent" rather than relying on SD card file mtimes.
+        """
+        limits = self._resolve_pull_limits(max_cards_per_deck, max_total_cards)
+        result = Future()
+
+        def start_query() -> None:
+            if not self.collection_ready():
+                result.set_exception(
+                    CollectionUnavailable("No Anki collection is currently open")
+                )
+                return
+
+            def op(col: Any) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+                cards, decks = self._collect_due_cards(col, limits)
+                wanted_ids: "set[int]" = set()
+                for deck_id in deck_ids:
+                    wanted_ids |= _deck_and_descendant_ids(col, deck_id)
+                cards = [c for c in cards if int(c["deck_id"]) in wanted_ids]
+                decks = [d for d in decks if int(d["id"]) in wanted_ids]
+                return cards, decks
+
+            operation = QueryOp(parent=mw, op=op, success=result.set_result)
+            operation.failure(result.set_exception).run_in_background()
+
+        mw.taskman.run_on_main(start_query)
+        cards, decks = self._wait_for_future(result)
+
+        pull_id = uuid.uuid4().hex
+        payload = {
+            "status": "success",
+            "protocol_version": PROTOCOL_VERSION,
+            "pull_id": pull_id,
+            "server_time": int(time.time()),
+            "decks": decks,
+            "cards": cards,
+        }
+        data = encode_pull_ndjson(payload)
+
+        due_dir = os.path.join(parent_folder, "system-due")
+        os.makedirs(due_dir, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        file_path = os.path.join(due_dir, f"{timestamp}-{pull_id[:8]}.ndjson")
+        with open(file_path, "wb") as f:
+            f.write(data)
+        return {
+            "card_count": len(cards),
+            "deck_count": len(decks),
+            "bytes": len(data),
+            "file_path": file_path,
+        }
+
+    def import_answers_from_folder(self, parent_folder: str) -> Dict[str, int]:
+        """Apply every <parent_folder>/system-answers/*.ndjson file into the
+        real Anki collection, through the exact same apply_reviews() /
+        _apply_batch() path the HTTP /push endpoint uses for a network push:
+        each file's review/flag lines (written by the device's
+        AnkiStore::appendAnswerEvent() as you grade -- see AnkiStore.cpp) are
+        parsed into a PushBatch and graded identically to a normal push.
+
+        Each file is claimed via claim_batch() -- the same duplicate-import
+        guard a network push gets -- keyed by its own filename, and deleted
+        after a successful apply so re-running Import does not re-grade it.
+        A file that fails to parse, or whose batch id is already claimed or
+        processed, is left in place and counted as skipped rather than
+        deleted, so nothing is silently lost.
+
+        Must be called off the Qt main thread -- apply_reviews() blocks on a
+        Future a main-thread CollectionOp resolves, same reason as
+        export_due_to_folder().
+        """
+        answers_dir = os.path.join(parent_folder, "system-answers")
+        files_processed = 0
+        total_applied = 0
+        total_rejected = 0
+        total_skipped = 0
+
+        if not os.path.isdir(answers_dir):
+            return {
+                "files": 0,
+                "processed": 0,
+                "rejected": 0,
+                "skipped": 0,
+            }
+
+        for name in sorted(os.listdir(answers_dir)):
+            if not name.endswith(".ndjson"):
+                continue
+            file_path = os.path.join(answers_dir, name)
+            batch_id = os.path.splitext(name)[0]
+
+            claim = self.claim_batch(batch_id)
+            if claim != "claimed":
+                total_skipped += 1
+                continue
+
+            try:
+                with open(file_path, "rb") as f:
+                    reviews, flags = parse_answers_ndjson(f.read())
+            except Exception:
+                LOGGER.exception("Could not parse %s", file_path)
+                self.release_batch(batch_id)
+                total_skipped += 1
+                continue
+
+            if not reviews and not flags:
+                self.release_batch(batch_id)
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    LOGGER.exception("Could not remove empty answers file %s", file_path)
+                files_processed += 1
+                continue
+
+            batch = PushBatch(
+                batch_id=batch_id,
+                reviews=reviews,
+                flags=flags,
+                legacy_csv=False,
+                derived_batch_id=False,
+            )
+            apply_result = self.apply_reviews(batch)
+            total_applied += apply_result.processed
+            total_rejected += len(apply_result.rejected)
+            files_processed += 1
+            try:
+                os.remove(file_path)
+            except OSError:
+                LOGGER.exception("Could not remove processed answers file %s", file_path)
+
+        return {
+            "files": files_processed,
+            "processed": total_applied,
+            "rejected": total_rejected,
+            "skipped": total_skipped,
+        }
+
     def _resolve_pull_limits(
         self,
         max_cards_per_deck: Optional[int],
@@ -1156,3 +1401,10 @@ def _xteink_stop_server() -> None:
 # Unregister mDNS when Anki profile closes so stale LAN records disappear.
 if hasattr(gui_hooks, "profile_will_close"):
     gui_hooks.profile_will_close.append(_xteink_stop_server)
+
+
+from .local_sync_dialog import open_local_sync_dialog  # noqa: E402
+
+local_sync_action = QAction(_t("local_sync_menu"), mw)
+qconnect(local_sync_action.triggered, lambda: open_local_sync_dialog(addon))
+mw.form.menuTools.addAction(local_sync_action)

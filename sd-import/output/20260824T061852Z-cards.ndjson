@@ -1,0 +1,5 @@
+{"type":"meta","status":"success","protocol_version":3,"pull_id":"sd-import-01603705212adcd5","card_count":3,"decks":[{"id":"sd:f3c73803dfc63c7d","name":"Geography"},{"id":"sd:d48500aea8325470","name":"Math"},{"id":"sd:aea1058d135f60df","name":"Biology"}]}
+{"type":"card","id":"9689241383267441061","deck_id":"sd:f3c73803dfc63c7d","deck_name":"Geography","front":"What is the capital of France?","back":"Paris"}
+{"type":"card","id":"9479989605223080799","deck_id":"sd:d48500aea8325470","deck_name":"Math","front":"2 + 2 = ?","back":"4"}
+{"type":"card","id":"9539672280406412398","deck_id":"sd:aea1058d135f60df","deck_name":"Biology","front":"Mitochondria is the powerhouse of the ___","back":"cell"}
+{"type":"end","card_count":3}

@@ -78,13 +78,13 @@ glyphs before copying the image here.
   medium size) and deliberately skip the Arabic presentation forms — UI_18 is
   never used for menus, and those forms cost roughly 700 KB of flash the app
   partition cannot spare.
-- Build footprint: RAM 16.8% (54,996 B static), Flash 78.5% (5,144,705 B of the
+- Build footprint: RAM 16.8% (54,996 B static), Flash 78.6% (5,148,863 B of the
   6,553,600-byte app partition — about 1.34 MB free).
 - Verified by rebuilding from a fresh clone with only the committed patch: same
-  size and same flash figure, differing in 101 bytes of the ESP app descriptor
-  (project name, build timestamp, and the trailing image digest), so the
-  checksum in `SHA256SUMS` is the one for the committed image rather than a
-  reproducible-build fingerprint.
+  size and same flash figure, differing only in a handful of bytes in the ESP
+  app descriptor (project name, build timestamp, and the trailing image
+  digest), so the checksum in `SHA256SUMS` is the one for the committed image
+  rather than a reproducible-build fingerprint.
 
 ## Deliberate removals
 
