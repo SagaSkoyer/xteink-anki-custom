@@ -51,8 +51,8 @@ from .mdns_advertise import MdnsAdvertiser
 ADDON_VERSION = "2.5.1"
 PROTOCOL_VERSION = 3
 # Hard safety caps; config and pull query params are clamped to these.
-MAX_CARDS_PER_DECK_LIMIT = 1000
-MAX_TOTAL_PULL_CARDS_LIMIT = 1000
+MAX_CARDS_PER_DECK_LIMIT = 9999
+MAX_TOTAL_PULL_CARDS_LIMIT = 9999
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
@@ -63,8 +63,8 @@ DEFAULT_CONFIG = {
     "mdns_name": "Xteink Anki",
     "api_token": "",
     # Soft defaults; X4 may override per pull via ?max_cards=&max_total=
-    "max_cards": 250,
-    "max_total_cards": 1000,
+    "max_cards": 9999,
+    "max_total_cards": 9999,
     "max_text_chars": 4096,
     "max_reviews_per_push": 500,
     "max_request_bytes": 262144,

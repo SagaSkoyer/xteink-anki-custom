@@ -14,7 +14,7 @@
 Working for daily use on Xteink (X3 tested) + Anki Desktop (macOS tested):
 
 - Pull **all top-level decks with due cards** (not only the open deck)
-- **Max cards per deck / total** on device web UI **and** device Anki settings (defaults 250 / 1000)
+- **Max cards per deck / total** on device web UI **and** device Anki settings (defaults 9999 / 9999)
 - Deck select/switch on device, progress strip, landscape/portrait, handedness
 - Grades: **Again · Hard · Good · Easy** (physical L→R)
 - **Card font:** default UI font (German + modern/polytonic Greek); optional reader/SD font for other languages (**Fonts** page)
