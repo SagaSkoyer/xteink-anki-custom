@@ -260,6 +260,49 @@ def _deck_and_descendant_ids(collection: Any, root_deck_id: int) -> "set[int]":
     return ids
 
 
+def _card_home_deck_id(card: Any, fallback_deck_id: Optional[int] = None) -> int:
+    """The deck a card really lives in.
+
+    A card sitting in a filtered deck keeps its home deck in odid; the export
+    must file it (and scope it) under that home deck, not the temporary one.
+    """
+
+    try:
+        original_deck_id = int(getattr(card, "odid", 0) or 0)
+        if original_deck_id:
+            return original_deck_id
+        return int(card.did)
+    except Exception:
+        return int(fallback_deck_id or 0)
+
+
+_SEARCH_ESCAPE_RE = re.compile(r'([\\"*_()])')
+
+
+def _escape_search_text(text: str) -> str:
+    """Escape a deck name for use inside an Anki search term."""
+
+    return _SEARCH_ESCAPE_RE.sub(r"\\\1", text or "")
+
+
+def _sorted_by_due(collection: Any, card_ids: List[int]) -> List[int]:
+    """Order card ids by their scheduler due value (position for new cards)."""
+
+    ids = [int(card_id) for card_id in card_ids]
+    if not ids:
+        return []
+    try:
+        placeholders = ",".join(str(card_id) for card_id in ids)
+        rows = collection.db.all(
+            f"select id, due from cards where id in ({placeholders})"
+        )
+        due_by_id = {int(row[0]): int(row[1]) for row in rows}
+    except Exception:
+        LOGGER.exception("Could not read card due values; keeping search order")
+        return ids
+    return sorted(ids, key=lambda card_id: (due_by_id.get(card_id, 0), card_id))
+
+
 def _clamp_int(value: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(int(value), maximum))
 
@@ -796,10 +839,13 @@ class XteinkAddon:
                 return
 
             def op(col: Any) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-                cards, decks = self._collect_due_cards(col, limits)
                 wanted_ids: "set[int]" = set()
                 for deck_id in deck_ids:
                     wanted_ids |= _deck_and_descendant_ids(col, deck_id)
+                # Scope the collection itself, so the pull budget is spent on
+                # the selected decks and their cards are gathered even when
+                # today's scheduler queue for them is empty.
+                cards, decks = self._collect_due_cards(col, limits, wanted_ids)
                 cards = [c for c in cards if int(c["deck_id"]) in wanted_ids]
                 decks = [d for d in decks if int(d["id"]) in wanted_ids]
                 return cards, decks
@@ -935,18 +981,110 @@ class XteinkAddon:
         return per_deck, total
 
     def _collect_due_cards(
-        self, collection: Any, limits: Tuple[int, int]
+        self,
+        collection: Any,
+        limits: Tuple[int, int],
+        scope_deck_ids: Optional["set[int]"] = None,
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Gather cards to study, newest-scheduler-order first.
+
+        scope_deck_ids narrows the whole walk (not just the result) to those
+        deck ids: the local SD export passes the selected decks' subtrees so
+        the per-pull budget is spent on them instead of being consumed by
+        unrelated decks that happen to sort earlier in the due tree.
+
+        Within a scope the scheduler queue is only the first pass. Anki's
+        queue is capped by each deck's daily new/review allowance, so a deck
+        holding 100 new cards yields nothing once today's allowance is used
+        (or set to 0). An export is an offline snapshot rather than today's
+        study session, so a second pass tops the selection up straight from
+        the deck, in study order: new, review, re-review (relearning), then
+        remaining learning-step cards.
+        """
+
         max_cards_per_deck, max_total_cards = limits
         text_limit = max(128, _int_config(self.config, "max_text_chars"))
         original_deck_id = collection.decks.get_current_id()
+        scope: Optional["set[int]"] = (
+            {int(deck_id) for deck_id in scope_deck_ids} if scope_deck_ids else None
+        )
 
         try:
             # Deepest decks first; pure parent folders are skipped (children cover them).
-            study_decks = self._due_study_decks(collection)
+            study_decks = self._due_study_decks(collection, scope)
             payload: List[Dict[str, Any]] = []
             seen_card_ids: set[int] = set()
             deck_counts: Dict[str, Dict[str, Any]] = {}
+
+            def accept(
+                card: Any,
+                fallback_deck_name: str,
+                study_deck_id: Optional[int] = None,
+            ) -> bool:
+                """Encode one card into the payload; False if it was skipped."""
+
+                card_id = int(card.id)
+                if card_id in seen_card_ids:
+                    return False
+
+                home_deck_id = _card_home_deck_id(card, study_deck_id)
+                # Only keep cards that live in this study deck. When a parent
+                # is selected, subdeck cards are skipped (already handled as leaves).
+                if study_deck_id is not None and home_deck_id != int(study_deck_id):
+                    return False
+                if scope is not None and home_deck_id not in scope:
+                    return False
+
+                seen_card_ids.add(card_id)
+                try:
+                    home_deck_name = collection.decks.name(home_deck_id)
+                except Exception:
+                    home_deck_name = fallback_deck_name or str(home_deck_id)
+                display_name = _deck_display_name(home_deck_name)
+
+                card_type = int(card.type)
+                front_text, back_text = _card_side_texts(card, text_limit)
+                deck_key = str(home_deck_id)
+                # deck_id / deck_name first so embedded clients see titles even if a
+                # later field is dropped under memory pressure when parsing the line.
+                try:
+                    card_flag = int(getattr(card, "flags", 0) or 0)
+                except Exception:
+                    card_flag = 0
+                if card_flag < 0 or card_flag > 7:
+                    card_flag = 0
+
+                payload.append(
+                    {
+                        "id": str(card_id),
+                        "deck_id": deck_key,
+                        "deck_name": display_name,
+                        "front": front_text,
+                        "back": back_text,
+                        "flag": card_flag,
+                        "card_type": _CARD_TYPE_NAMES.get(card_type, "unknown"),
+                        # Kept for compatibility with the original X4 client.
+                        "is_learning": card_type
+                        in {
+                            int(CARD_TYPE_NEW),
+                            int(CARD_TYPE_LRN),
+                            int(CARD_TYPE_RELEARNING),
+                        },
+                        "queue": int(card.queue),
+                        "reps": int(card.reps),
+                        "mod": int(card.mod),
+                    }
+                )
+                summary = deck_counts.get(deck_key)
+                if summary is None:
+                    deck_counts[deck_key] = {
+                        "id": deck_key,
+                        "name": display_name,
+                        "card_count": 1,
+                    }
+                else:
+                    summary["card_count"] = int(summary["card_count"]) + 1
+                return True
 
             deck_count = max(1, len(study_decks))
             # Fair share so one large stack cannot starve the rest of the pull.
@@ -992,8 +1130,7 @@ class XteinkAddon:
                     try:
                         card_id = int(queued_card.card.id)
                     except Exception:
-                        card = Card(collection, backend_card=queued_card.card)
-                        card_id = int(card.id)
+                        card_id = int(Card(collection, backend_card=queued_card.card).id)
                     if card_id in seen_card_ids:
                         continue
 
@@ -1002,66 +1139,19 @@ class XteinkAddon:
                     except Exception:
                         card = Card(collection, backend_card=queued_card.card)
 
-                    try:
-                        home_deck_id = int(card.did)
-                    except Exception:
-                        home_deck_id = int(study_deck_id)
+                    if accept(card, study_deck_name, study_deck_id):
+                        accepted_for_deck += 1
 
-                    # Only keep cards that live in this study deck. When a parent
-                    # is selected, subdeck cards are skipped (already handled as leaves).
-                    if home_deck_id != int(study_deck_id):
-                        continue
-
-                    seen_card_ids.add(card_id)
-                    try:
-                        home_deck_name = collection.decks.name(home_deck_id)
-                    except Exception:
-                        home_deck_name = study_deck_name or str(home_deck_id)
-                    display_name = _deck_display_name(home_deck_name)
-
-                    card_type = int(card.type)
-                    front_text, back_text = _card_side_texts(card, text_limit)
-                    deck_key = str(home_deck_id)
-                    # deck_id / deck_name first so embedded clients see titles even if a
-                    # later field is dropped under memory pressure when parsing the line.
-                    try:
-                        card_flag = int(getattr(card, "flags", 0) or 0)
-                    except Exception:
-                        card_flag = 0
-                    if card_flag < 0 or card_flag > 7:
-                        card_flag = 0
-
-                    payload.append(
-                        {
-                            "id": str(card_id),
-                            "deck_id": deck_key,
-                            "deck_name": display_name,
-                            "front": front_text,
-                            "back": back_text,
-                            "flag": card_flag,
-                            "card_type": _CARD_TYPE_NAMES.get(card_type, "unknown"),
-                            # Kept for compatibility with the original X4 client.
-                            "is_learning": card_type
-                            in {
-                                int(CARD_TYPE_NEW),
-                                int(CARD_TYPE_LRN),
-                                int(CARD_TYPE_RELEARNING),
-                            },
-                            "queue": int(card.queue),
-                            "reps": int(card.reps),
-                            "mod": int(card.mod),
-                        }
-                    )
-                    accepted_for_deck += 1
-                    summary = deck_counts.get(deck_key)
-                    if summary is None:
-                        deck_counts[deck_key] = {
-                            "id": deck_key,
-                            "name": display_name,
-                            "card_count": 1,
-                        }
-                    else:
-                        summary["card_count"] = int(summary["card_count"]) + 1
+            if scope is not None and len(payload) < max_total_cards:
+                self._top_up_from_scope(
+                    collection,
+                    scope,
+                    limits,
+                    payload,
+                    deck_counts,
+                    seen_card_ids,
+                    accept,
+                )
 
             decks_summary = list(deck_counts.values())
             LOGGER.info(
@@ -1077,14 +1167,113 @@ class XteinkAddon:
             except Exception:
                 LOGGER.exception("Could not restore the previously selected Anki deck")
 
+    def _top_up_from_scope(
+        self,
+        collection: Any,
+        scope: "set[int]",
+        limits: Tuple[int, int],
+        payload: List[Dict[str, Any]],
+        deck_counts: Dict[str, Dict[str, Any]],
+        seen_card_ids: "set[int]",
+        accept: Any,
+    ) -> None:
+        """Fill the remaining budget straight from the selected decks.
+
+        Bypasses the scheduler's daily allowances (which are about pacing a
+        study session, not about what a device may carry offline) while
+        keeping Anki's study order and skipping suspended/buried cards.
+        """
+
+        max_cards_per_deck, max_total_cards = limits
+
+        for deck_id in self._scope_decks_deepest_first(collection, scope):
+            if len(payload) >= max_total_cards:
+                break
+            deck_key = str(int(deck_id))
+            taken = int(deck_counts.get(deck_key, {}).get("card_count", 0))
+            if taken >= max_cards_per_deck:
+                continue
+
+            try:
+                deck_name = collection.decks.name(deck_id)
+            except Exception:
+                continue
+            if not deck_name:
+                continue
+
+            for card_id in self._deck_study_card_ids(collection, deck_name):
+                if len(payload) >= max_total_cards or taken >= max_cards_per_deck:
+                    break
+                if card_id in seen_card_ids:
+                    continue
+                try:
+                    card = collection.get_card(card_id)
+                except Exception:
+                    LOGGER.exception("Could not load card %s for eInk export", card_id)
+                    continue
+                if accept(card, deck_name):
+                    taken += 1
+
+    def _scope_decks_deepest_first(
+        self, collection: Any, scope: "set[int]"
+    ) -> List[int]:
+        """Selected deck ids, deepest deck path first (leaves before parents)."""
+
+        named: List[Tuple[str, int]] = []
+        for deck_id in scope:
+            try:
+                name = collection.decks.name(int(deck_id))
+            except Exception:
+                name = ""
+            named.append((name or "", int(deck_id)))
+        named.sort(key=lambda item: (-item[0].count("::"), item[0], item[1]))
+        return [deck_id for _name, deck_id in named]
+
+    def _deck_study_card_ids(self, collection: Any, deck_name: str) -> List[int]:
+        """Card ids of one deck (excluding its subdecks) in study order.
+
+        New, then review, then re-review (relearning), then any remaining
+        learning-step cards; each group ordered by its scheduler due value.
+        Subdecks are excluded because every deck in the selection is walked
+        on its own, so a card is only ever gathered under its home deck.
+        """
+
+        escaped = _escape_search_text(deck_name)
+        deck_filter = f'"deck:{escaped}" -"deck:{escaped}::*" -is:suspended -is:buried'
+        groups = (
+            "is:new",
+            "is:review -is:learn",
+            "is:review is:learn",
+            "is:learn -is:review",
+        )
+
+        card_ids: List[int] = []
+        seen: "set[int]" = set()
+        for group in groups:
+            try:
+                found = list(collection.find_cards(f"{deck_filter} ({group})"))
+            except Exception:
+                LOGGER.exception(
+                    "Card search failed for deck %s (%s)", deck_name, group
+                )
+                continue
+            for card_id in _sorted_by_due(collection, found):
+                if card_id in seen:
+                    continue
+                seen.add(card_id)
+                card_ids.append(card_id)
+        return card_ids
+
     def _due_study_decks(
-        self, collection: Any
+        self, collection: Any, scope: Optional["set[int]"] = None
     ) -> List[Tuple[int, str, int]]:
         """Due study units deepest-first: (deck_id, name, child_due_sum).
 
         Pure parent folders (due only from children) are skipped so each leaf
         becomes its own selectable stack. Parents that still have own due cards
-        (total due > sum of children) remain included.
+        (total due > sum of children) remain included. When scope is given only
+        decks inside it are returned, so a scoped pull never spends its budget
+        on unrelated decks.
         """
 
         study_decks: List[Tuple[int, str, int]] = []
@@ -1113,6 +1302,8 @@ class XteinkAddon:
             deck_id = int(node.deck_id)
             if deck_id == 0:
                 return
+            if scope is not None and deck_id not in scope:
+                return
             try:
                 deck_name = collection.decks.name(deck_id)
             except Exception:
@@ -1131,6 +1322,20 @@ class XteinkAddon:
             walk(root)
             if study_decks:
                 return study_decks
+
+        if scope is not None:
+            # Nothing is due in the selection today (daily limits, or all
+            # cards scheduled ahead); still walk the selected decks so the
+            # top-up pass can fill the export from them.
+            scoped: List[Tuple[int, str, int]] = []
+            for deck_id in self._scope_decks_deepest_first(collection, scope):
+                try:
+                    name = collection.decks.name(deck_id)
+                except Exception:
+                    continue
+                if name:
+                    scoped.append((deck_id, name, 0))
+            return scoped
 
         # Fallback: current deck only (legacy behaviour).
         current_id = int(collection.decks.get_current_id())
