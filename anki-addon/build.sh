@@ -17,7 +17,7 @@ rm -f "${output_file}"
   cd "${source_dir}"
   zip -q -r -X "${output_file}" \
     __init__.py config.json config.md manifest.json \
-    mdns_advertise.py protocol.py textutil.py user_files \
+    local_sync_dialog.py mdns_advertise.py protocol.py textutil.py user_files \
     -x '*/__pycache__/*' '*.pyc'
 )
 

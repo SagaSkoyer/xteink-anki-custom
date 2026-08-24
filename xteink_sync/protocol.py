@@ -7,7 +7,7 @@ import hashlib
 import io
 import json
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any, List, Mapping, Optional, Tuple
 
 
 MAX_BATCH_ID_LENGTH = 128
@@ -341,3 +341,41 @@ def parse_push_payload(
             status=413,
         )
     return batch
+
+
+def parse_answers_ndjson(data: bytes) -> Tuple[Tuple[Review, ...], Tuple[FlagUpdate, ...]]:
+    """Parse a system-answers/*.ndjson file: one JSON object per line, written
+    by AnkiStore::appendAnswerEvent() on the device as each card is graded or
+    flagged (see AnkiStore.h/.cpp). Lines look like:
+
+        {"type":"review","card_id":"123","ease":3,"duration_ms":4200}
+        {"type":"flag","card_id":"123","flag":1}
+
+    A malformed or truncated line is skipped rather than failing the whole
+    file -- these files can be torn by an SD card pulled mid-write, and one
+    bad line should not cost every other review in the same session.
+    """
+    reviews: List[Review] = []
+    flags: List[FlagUpdate] = []
+    for line in data.decode("utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+            record_type = record.get("type")
+            card_id = int(record["card_id"])
+            if record_type == "review":
+                ease = int(record["ease"])
+                if ease < 1 or ease > 4:
+                    continue
+                duration_ms = int(record.get("duration_ms", 0) or 0)
+                reviews.append(Review(card_id=card_id, ease=ease, duration_ms=duration_ms))
+            elif record_type == "flag":
+                flag = int(record["flag"])
+                if flag < 0 or flag > 7:
+                    continue
+                flags.append(FlagUpdate(card_id=card_id, flag=flag))
+        except (ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return tuple(reviews), tuple(flags)

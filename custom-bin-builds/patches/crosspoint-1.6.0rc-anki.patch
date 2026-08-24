@@ -40525,10 +40525,10 @@ index 0000000..3710d1b
 +}
 diff --git a/src/activities/anki/AnkiActivity.h b/src/activities/anki/AnkiActivity.h
 new file mode 100644
-index 0000000..21a0e4a
+index 0000000..9e6a18f
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.h
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,96 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -40594,7 +40594,8 @@ index 0000000..21a0e4a
 +  void startNetworkAction(NetworkAction action);
 +  void onWifiSelectionComplete(bool success);
 +  void performNetworkAction();
-+  // "Load today's cards from SD" -- installs Anki/cards.ndjson without Wi-Fi.
++  // "Load today's cards from SD" -- installs the newest system-due/*.ndjson
++  // without Wi-Fi.
 +  void performSdImport();
 +  // After NETWORK_ERROR: offer mDNS search vs "Anki is open / keep URL".
 +  void offerDiscoverAfterConnectFailure();
@@ -41123,10 +41124,10 @@ index 0000000..41bf526
 +}  // namespace AnkiMdns
 diff --git a/src/anki/AnkiStore.cpp b/src/anki/AnkiStore.cpp
 new file mode 100644
-index 0000000..2673032
+index 0000000..17b28ff
 --- /dev/null
 +++ b/src/anki/AnkiStore.cpp
-@@ -0,0 +1,1203 @@
+@@ -0,0 +1,1324 @@
 +#include "AnkiStore.h"
 +
 +#include <ArduinoJson.h>
@@ -41255,6 +41256,10 @@ index 0000000..2673032
 +
 +bool AnkiStore::load(std::string& error) {
 +  error.clear();
++  // Cheap (one open-or-create each); ensures both are visible on the SD card
++  // even before a device or add-on user has used the local sync workflow.
++  Storage.ensureDirectoryExists(SD_DUE_DIR);
++  Storage.ensureDirectoryExists(SD_ANSWERS_DIR);
 +  if (!loadConfiguration(error)) return false;
 +  return loadSession(error);
 +}
@@ -41611,21 +41616,38 @@ index 0000000..2673032
 +// keeps a runaway or corrupt SD file from consuming the whole card partition.
 +constexpr size_t kMaxSdImportBytes = 2 * 1024 * 1024;
 +
++std::string AnkiStore::findNewestSdDueFile() const {
++  const std::vector<String> files = Storage.listFiles(SD_DUE_DIR, 64);
++  const char* newestName = nullptr;
++  for (const String& name : files) {
++    if (name.length() <= 7 || !name.endsWith(".ndjson")) continue;
++    if (newestName == nullptr || strcmp(name.c_str(), newestName) > 0) {
++      newestName = name.c_str();
++    }
++  }
++  if (newestName == nullptr) return "";
++  std::string path = SD_DUE_DIR;
++  path += '/';
++  path += newestName;
++  return path;
++}
++
 +bool AnkiStore::installFromSdImport(std::string& error) {
-+  if (!Storage.exists(SD_IMPORT_PATH)) {
-+    error = "No Anki/cards.ndjson file on the SD card";
++  Storage.ensureDirectoryExists(SD_DUE_DIR);
++  const std::string sourcePath = findNewestSdDueFile();
++  if (sourcePath.empty()) {
++    error = "No *.ndjson file in system-due/ on the SD card";
 +    return false;
 +  }
 +
 +  HalFile source;
-+  if (!Storage.openFileForRead("ANKI", SD_IMPORT_PATH, source)) {
-+    error = "Could not open Anki/cards.ndjson";
++  if (!Storage.openFileForRead("ANKI", sourcePath, source)) {
++    error = "Could not open " + sourcePath;
 +    return false;
 +  }
 +
 +  // Stage a copy under PULL_TEMP_PATH so installPulledBatch() can install it
-+  // exactly as it would a network pull. Copying rather than renaming leaves the
-+  // user's own file on the SD card untouched for re-import or editing.
++  // exactly as it would a network pull.
 +  Storage.remove(PULL_TEMP_PATH);
 +  HalFile staged;
 +  if (!Storage.openFileForWrite("ANKI", PULL_TEMP_PATH, staged)) {
@@ -41651,17 +41673,99 @@ index 0000000..2673032
 +  }
 +  staged.flush();
 +  staged.close();
++  source.close();
 +
 +  if (copyFailed) {
 +    Storage.remove(PULL_TEMP_PATH);
-+    error = total > kMaxSdImportBytes ? "Anki/cards.ndjson is too large" : "Could not copy Anki/cards.ndjson";
++    error = total > kMaxSdImportBytes ? (sourcePath + " is too large") : ("Could not copy " + sourcePath);
 +    return false;
 +  }
 +
 +  // installPulledBatch() deletes PULL_TEMP_PATH on failure and renames it into
-+  // place (CARDS_PATH/INDEX_PATH) on success -- our staged copy either way,
-+  // never the SD_IMPORT_PATH original.
-+  return installPulledBatch(error);
++  // place (CARDS_PATH/INDEX_PATH) on success -- our staged copy either way.
++  if (!installPulledBatch(error)) return false;
++
++  // Consumed: delete the due file so the next import does not pick it up
++  // again and system-due/ does not accumulate old exports.
++  Storage.remove(sourcePath.c_str());
++  return true;
++}
++
++std::string AnkiStore::currentAnswersFilePath() const {
++  if (batchId.empty()) return "";
++  std::string safe;
++  safe.reserve(batchId.size());
++  for (const char c : batchId) {
++    if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_') safe += c;
++  }
++  if (safe.empty()) return "";
++  if (safe.size() > 64) safe.resize(64);
++  std::string path = SD_ANSWERS_DIR;
++  path += '/';
++  path += safe;
++  path += ".ndjson";
++  return path;
++}
++
++void AnkiStore::appendAnswerEvent(const std::string& jsonLine) const {
++  const std::string path = currentAnswersFilePath();
++  if (path.empty()) return;
++  Storage.ensureDirectoryExists(SD_ANSWERS_DIR);
++  HalFile out = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND);
++  if (!out) {
++    LOG_DBG("ANKI", "Could not open %s for the local eInk answers mirror", path.c_str());
++    return;
++  }
++  const std::string line = jsonLine + "\n";
++  if (out.write(line.data(), line.size()) != line.size()) {
++    LOG_DBG("ANKI", "Could not append to %s", path.c_str());
++  }
++  out.flush();
++  out.close();
++}
++
++void AnkiStore::removeLastAnswerEventOfType(const char* typeTag) const {
++  const std::string path = currentAnswersFilePath();
++  if (path.empty() || !Storage.exists(path.c_str())) return;
++
++  std::vector<std::string> lines;
++  HalFile in;
++  if (Storage.openFileForRead("ANKI", path, in)) {
++    std::string line;
++    bool tooLong = false;
++    while (readLine(in, line, 256, tooLong)) {
++      if (!tooLong && !line.empty()) lines.push_back(line);
++    }
++    in.close();
++  }
++
++  const std::string needle = std::string("\"type\":\"") + typeTag + "\"";
++  int lastIndex = -1;
++  for (int i = static_cast<int>(lines.size()) - 1; i >= 0; i--) {
++    if (lines[static_cast<size_t>(i)].find(needle) != std::string::npos) {
++      lastIndex = i;
++      break;
++    }
++  }
++  if (lastIndex < 0) return;
++  lines.erase(lines.begin() + lastIndex);
++
++  Storage.remove(path.c_str());
++  if (lines.empty()) return;
++  HalFile out = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
++  if (!out) {
++    LOG_DBG("ANKI", "Could not rewrite %s after undo", path.c_str());
++    return;
++  }
++  for (const auto& l : lines) {
++    const std::string row = l + "\n";
++    if (out.write(row.data(), row.size()) != row.size()) {
++      LOG_DBG("ANKI", "Could not rewrite %s after undo", path.c_str());
++      break;
++    }
++  }
++  out.flush();
++  out.close();
 +}
 +
 +bool AnkiStore::installPulledBatch(std::string& error) {
@@ -42022,6 +42126,14 @@ index 0000000..2673032
 +  }
 +  out.flush();
 +  out.close();
++
++  {
++    char eventLine[80];
++    const int n = snprintf(eventLine, sizeof(eventLine), "{\"type\":\"flag\",\"card_id\":\"%llu\",\"flag\":%u}",
++                           static_cast<unsigned long long>(cardId), static_cast<unsigned int>(clampFlag(flag)));
++    if (n > 0 && static_cast<size_t>(n) < sizeof(eventLine)) appendAnswerEvent(eventLine);
++  }
++
 +  error.clear();
 +  return true;
 +}
@@ -42203,6 +42315,15 @@ index 0000000..2673032
 +  reviews.flush();
 +  reviews.close();
 +
++  {
++    char eventLine[128];
++    const int n = snprintf(eventLine, sizeof(eventLine),
++                           "{\"type\":\"review\",\"card_id\":\"%llu\",\"ease\":%u,\"duration_ms\":%lu}",
++                           static_cast<unsigned long long>(card.id), static_cast<unsigned int>(ease),
++                           static_cast<unsigned long>(durationMs));
++    if (n > 0 && static_cast<size_t>(n) < sizeof(eventLine)) appendAnswerEvent(eventLine);
++  }
++
 +  // Snapshot for a single-level Undo, taken before this review mutates the deck.
 +  lastReview.valid = true;
 +  lastReview.deckIndex = currentDeck;
@@ -42259,6 +42380,7 @@ index 0000000..2673032
 +    return false;
 +  }
 +  if (!removeLastReviewLogLine(error)) return false;
++  removeLastAnswerEventOfType("review");
 +
 +  DeckSession& deck = decks[lastReview.deckIndex];
 +  deck.queue = lastReview.queue;
@@ -42332,10 +42454,10 @@ index 0000000..2673032
 +}
 diff --git a/src/anki/AnkiStore.h b/src/anki/AnkiStore.h
 new file mode 100644
-index 0000000..d2386ed
+index 0000000..9472ee7
 --- /dev/null
 +++ b/src/anki/AnkiStore.h
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,222 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -42361,12 +42483,18 @@ index 0000000..d2386ed
 +class AnkiStore {
 + public:
 +  static constexpr const char* PULL_TEMP_PATH = "/.crosspoint/anki-pull.tmp";
-+  // Fixed path for a hand-authored or scripted local import: drop an NDJSON file
-+  // here (same wire format the Mac add-on pulls over HTTP -- see
-+  // installFromSdImport()) and use "Load today's cards from SD" instead of a
-+  // network pull. The file is left in place on both success and failure so it
-+  // can be re-imported or fixed without re-copying it onto the card.
-+  static constexpr const char* SD_IMPORT_PATH = "/Anki/cards.ndjson";
++  // Local (no Wi-Fi) sync folders at the SD card root -- the Mac add-on's
++  // "Tools > eInk (local)" dialog writes/reads these same two folders directly
++  // on the SD card, so plugging the card into a reader is the sync medium.
++  //   system-due/     -- device reads the lexicographically newest *.ndjson
++  //                      here (see installFromSdImport()); consumed (deleted)
++  //                      on a successful install so it is not re-imported.
++  //   system-answers/ -- device appends one NDJSON line per review/flag event
++  //                      here as you grade, named after the active batch id
++  //                      (see currentAnswersFilePath()), for Import to apply
++  //                      back into the real Anki collection.
++  static constexpr const char* SD_DUE_DIR = "/system-due";
++  static constexpr const char* SD_ANSWERS_DIR = "/system-answers";
 +  static constexpr const char* FLAGS_PATH = "/.crosspoint/anki-flags.csv";
 +  static constexpr const char* PUSH_TEMP_PATH = "/.crosspoint/anki-push.json";
 +
@@ -42412,10 +42540,12 @@ index 0000000..d2386ed
 +  bool isLandscapeCards() const { return cardOrientation != 0; }
 +
 +  bool installPulledBatch(std::string& error);
-+  // Stages a copy of SD_IMPORT_PATH under PULL_TEMP_PATH and installs it through
-+  // the same path as a network pull. Returns false with a message in `error` when
-+  // no import file exists, it is oversized, or its contents fail validation --
-+  // installPulledBatch() applies the identical NDJSON checks either way.
++  // Finds the newest *.ndjson in SD_DUE_DIR, stages a copy under PULL_TEMP_PATH,
++  // and installs it through the same path as a network pull. Returns false with
++  // a message in `error` when no due file exists, it is oversized, or its
++  // contents fail validation -- installPulledBatch() applies the identical
++  // NDJSON checks either way. Deletes the source file from SD_DUE_DIR on
++  // success; leaves it in place on failure so it can be inspected or fixed.
 +  bool installFromSdImport(std::string& error);
 +  bool loadCurrentCard(AnkiCard& card, std::string& error) const;
 +  bool recordReview(uint8_t ease, uint32_t durationMs, std::string& error);
@@ -42501,6 +42631,27 @@ index 0000000..d2386ed
 +  uint8_t clampFlag(int value) const;
 +  // Drops the last line of REVIEWS_PATH (the row recordReview() just appended).
 +  bool removeLastReviewLogLine(std::string& error);
++
++  // Full path of SD_DUE_DIR's lexicographically-newest *.ndjson, or empty if
++  // the folder has none. Add-on export filenames are timestamp-prefixed (see
++  // sd-import conventions), so "lexicographically newest" means "most recent".
++  std::string findNewestSdDueFile() const;
++  // SD_ANSWERS_DIR path for the active batch: derived from batchId so it is
++  // stable across reboots (batchId is itself persisted -- see loadSession())
++  // without needing its own separate persisted state. Empty when no batch is
++  // active.
++  std::string currentAnswersFilePath() const;
++  // Best-effort append of one NDJSON line to currentAnswersFilePath(). Never
++  // fails the caller: this is a convenience mirror of the authoritative
++  // REVIEWS_PATH/FLAGS_PATH state, not required for on-device review/flag
++  // logic to keep working.
++  void appendAnswerEvent(const std::string& jsonLine) const;
++  // Drops the most recent line whose "type" matches typeTag (e.g. "review")
++  // from the answers mirror -- used by undoLastReview() so an undone grade
++  // does not linger in the file Import would otherwise apply. Matches by
++  // type rather than blindly popping the last line because flag events can
++  // be appended after a review but before it is undone.
++  void removeLastAnswerEventOfType(const char* typeTag) const;
 +
 +  std::string serverUrl;
 +  std::string apiToken;

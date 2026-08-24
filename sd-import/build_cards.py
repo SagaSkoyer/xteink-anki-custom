@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Convert a simple CSV of flashcards into the NDJSON file the "Load today's
-cards from SD" device menu action reads from Anki/cards.ndjson.
+"""Convert a simple CSV of flashcards into an NDJSON file for the SD card's
+system-due/ folder, which the "Load today's cards from SD" device menu
+action reads (the newest *.ndjson file there -- see AnkiStore::
+findNewestSdDueFile() in the firmware).
 
 CSV columns: front,back[,deck]
 - front, back: card text. Supports embedded commas/newlines via normal CSV
@@ -27,6 +29,7 @@ import csv
 import hashlib
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Mirrors AnkiStore::MAX_CARD_LINE_BYTES / MAX_CARDS (src/anki/AnkiStore.h) --
@@ -113,14 +116,24 @@ def build_ndjson(cards) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
+def default_output_path(script_dir: Path) -> Path:
+    # Timestamp-prefixed so it sorts after any earlier export: the device
+    # picks the lexicographically greatest *.ndjson in system-due/ as "most
+    # recent" rather than relying on SD card file mtimes (see
+    # AnkiStore::findNewestSdDueFile()).
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return script_dir / "output" / f"{timestamp}-cards.ndjson"
+
+
 def main() -> int:
     script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("csv_path", nargs="?", default=str(script_dir / "input" / "cards.csv"))
-    parser.add_argument("-o", "--output", default=str(script_dir / "output" / "cards.ndjson"))
+    parser.add_argument("-o", "--output", default=None)
     args = parser.parse_args()
 
     csv_path = Path(args.csv_path)
+    output_path = Path(args.output) if args.output else default_output_path(script_dir)
     if not csv_path.exists():
         print(f"No such file: {csv_path}", file=sys.stderr)
         return 1
@@ -132,13 +145,12 @@ def main() -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
-    output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(ndjson)
 
     deck_count = len({deck for deck, _, _ in cards})
     print(f"Wrote {output_path}: {len(cards)} card(s) across {deck_count} deck(s), {len(ndjson)} bytes")
-    print("Copy this file to the SD card as /Anki/cards.ndjson, then use")
+    print(f"Copy this file to the SD card as system-due/{output_path.name}, then use")
     print('"Load today\'s cards from SD" in the device\'s Anki menu.')
     return 0
 

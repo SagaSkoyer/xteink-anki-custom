@@ -31,26 +31,40 @@ v2.4.0 release: the source tree is at add-on version **2.5.1**.
 Both machines must be on the same network, and Anki must be running for the
 device to pull cards or push reviews.
 
-## Exporting a deck without Wi-Fi
+## Full offline sync: Tools → eInk (local)
 
-Click the gear icon next to any deck on Anki's deck list → **eInk Reviews -
-Export to SD**. Pick a save location and it writes that deck's (and its
-subdecks') due cards to an `.ndjson` file — the same wire format and the same
+No Wi-Fi pairing at all — plug the SD card into a reader and this reads/
+writes its `system-due/` and `system-answers/` folders directly. In Anki:
+**Tools → eInk (local)**.
+
+**Export tab** — pick the SD card's mount point as the parent folder (e.g.
+`/Volumes/SDCARD` on a Mac), check the decks you want, click **Export**. It
+writes the checked decks' (+ subdecks') due cards into `<parent>/system-due/`
+as a timestamped `.ndjson` file — the same wire format and the same
 card-collection logic (`_collect_due_cards`) a device's normal "Download
-today's cards" pull uses, just written to a file you choose instead of served
-over HTTP. No network pairing needed on either side.
+today's cards" pull uses. On the device: **Anki → Load today's cards from
+SD** picks up the newest file there and deletes it once installed.
 
-Copy the result to the SD card as `/Anki/cards.ndjson` and use **Anki → Load
-today's cards from SD** on the device (see `../custom-bin-builds/SETUP.md` and
-`../sd-import/`). Note that cards exported this way still come from your real
-Anki collection, so — unlike the CSV-based cards `sd-import/` builds —
-reviewing them and later pushing reviews back through a normal Wi-Fi sync
-*does* grade the real Anki cards, since the ids match.
+**Import tab** — same parent folder, click **Import**. As you review on the
+device, it appends one line per graded review or flag toggle into
+`<parent>/system-answers/<batch-id>.ndjson` (`AnkiStore::appendAnswerEvent()`
+in the firmware). Import reads every file there and applies it to your real
+Anki collection through `apply_reviews()` — the exact same grading logic a
+normal Wi-Fi "Upload reviews" push uses, just sourced from the SD card
+instead of an HTTP request. Each file is deleted once successfully applied,
+so re-running Import does not re-grade anything; a file that fails to parse
+or was already processed is left in place rather than silently dropped.
+
+Because the export carries real Anki card ids (not synthetic ones — see
+`../sd-import/` for the CSV-based alternative that doesn't), reviewing these
+cards and running Import *does* grade the real cards in your collection —
+this is a genuine offline round trip, no network required on either side.
 
 ## Contents
 
-`__init__.py`, `protocol.py`, `textutil.py`, `mdns_advertise.py`,
-`config.json`, `config.md`, `manifest.json`, and `user_files/`.
+`__init__.py`, `local_sync_dialog.py`, `protocol.py`, `textutil.py`,
+`mdns_advertise.py`, `config.json`, `config.md`, `manifest.json`, and
+`user_files/`.
 
 ## Rebuilding
 

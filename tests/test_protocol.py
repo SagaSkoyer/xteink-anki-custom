@@ -15,6 +15,7 @@ SPEC.loader.exec_module(PROTOCOL)
 ProtocolError = PROTOCOL.ProtocolError
 parse_push_payload = PROTOCOL.parse_push_payload
 encode_pull_ndjson = PROTOCOL.encode_pull_ndjson
+parse_answers_ndjson = PROTOCOL.parse_answers_ndjson
 
 
 class ParsePushPayloadTests(unittest.TestCase):
@@ -275,6 +276,54 @@ class ParsePushPayloadTests(unittest.TestCase):
         self.assertEqual(card["flag"], 1)
         self.assertEqual(card["type"], "card")
 
+
+
+class ParseAnswersNdjsonTests(unittest.TestCase):
+    def test_parses_review_and_flag_lines(self):
+        data = (
+            b'{"type":"review","card_id":"123","ease":3,"duration_ms":4200}\n'
+            b'{"type":"flag","card_id":"123","flag":1}\n'
+        )
+        reviews, flags = parse_answers_ndjson(data)
+        self.assertEqual(len(reviews), 1)
+        self.assertEqual(reviews[0].card_id, 123)
+        self.assertEqual(reviews[0].ease, 3)
+        self.assertEqual(reviews[0].duration_ms, 4200)
+        self.assertEqual(len(flags), 1)
+        self.assertEqual(flags[0].card_id, 123)
+        self.assertEqual(flags[0].flag, 1)
+
+    def test_skips_malformed_and_truncated_lines(self):
+        data = (
+            b'{"type":"review","card_id":"1","ease":3,"duration_ms":100}\n'
+            b'not json at all\n'
+            b'{"type":"review","card_id":"2"'  # truncated, no trailing newline
+        )
+        reviews, flags = parse_answers_ndjson(data)
+        self.assertEqual(len(reviews), 1)
+        self.assertEqual(reviews[0].card_id, 1)
+        self.assertEqual(len(flags), 0)
+
+    def test_out_of_range_ease_and_flag_skipped(self):
+        data = (
+            b'{"type":"review","card_id":"1","ease":9,"duration_ms":0}\n'
+            b'{"type":"flag","card_id":"1","flag":42}\n'
+        )
+        reviews, flags = parse_answers_ndjson(data)
+        self.assertEqual(reviews, ())
+        self.assertEqual(flags, ())
+
+    def test_blank_lines_and_missing_duration_are_tolerated(self):
+        data = b'\n{"type":"review","card_id":"5","ease":2}\n\n'
+        reviews, flags = parse_answers_ndjson(data)
+        self.assertEqual(len(reviews), 1)
+        self.assertEqual(reviews[0].duration_ms, 0)
+
+    def test_unknown_type_ignored(self):
+        data = b'{"type":"mystery","card_id":"1"}\n'
+        reviews, flags = parse_answers_ndjson(data)
+        self.assertEqual(reviews, ())
+        self.assertEqual(flags, ())
 
 
 if __name__ == "__main__":
