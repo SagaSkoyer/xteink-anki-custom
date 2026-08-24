@@ -276,6 +276,45 @@ class CollectDueCardsTests(unittest.TestCase):
         self.assertEqual(payload[0]["id"], "1000")
         self.assertEqual(payload[-1]["id"], "1099")
 
+    def test_due_deck_exports_only_what_anki_shows_as_due(self):
+        """100 new due in Anki exports 100 cards, not the deck's backlog."""
+
+        names = {1: "Mandarin"}
+        cards = [FakeCard(1000 + i, 1, 0, i, f"new {i}") for i in range(250)]
+        tree = _node(0, "", new=100, children=[_node(1, "Mandarin", new=100)])
+        # Today's allowance releases the first 100 cards only.
+        col = FakeCollection(names, cards, {1: cards[:100]}, tree)
+
+        payload, decks = self._addon()._collect_due_cards(col, (250, 1000), {1})
+
+        self.assertEqual(len(payload), 100)
+        self.assertEqual(decks[0]["card_count"], 100)
+        self.assertEqual(payload[-1]["id"], "1099")
+
+    def test_partially_due_deck_is_not_topped_up(self):
+        """A deck with a few due cards keeps those, no backlog top-up."""
+
+        names = {1: "News", 2: "Other"}
+        cards = [FakeCard(1000 + i, 1, 0, i, f"news {i}") for i in range(40)]
+        cards += [FakeCard(2000 + i, 2, 0, i, f"other {i}") for i in range(40)]
+        tree = _node(
+            0,
+            "",
+            new=5,
+            children=[_node(1, "News", new=5), _node(2, "Other")],
+        )
+        # "News" has 5 due today; "Other" has nothing due (allowance at 0).
+        col = FakeCollection(names, cards, {1: cards[:5]}, tree)
+
+        payload, _decks = self._addon()._collect_due_cards(col, (250, 1000), {1, 2})
+
+        by_deck = {}
+        for card in payload:
+            by_deck[card["deck_id"]] = by_deck.get(card["deck_id"], 0) + 1
+        self.assertEqual(by_deck["1"], 5)
+        # The deck the scheduler skipped entirely is still exported in full.
+        self.assertEqual(by_deck["2"], 40)
+
     def test_scope_budget_is_not_spent_on_other_decks(self):
         names = {1: "News", 2: "Other"}
         cards = [FakeCard(1000 + i, 1, 0, i, f"news {i}") for i in range(10)]

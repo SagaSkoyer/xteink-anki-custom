@@ -993,13 +993,16 @@ class XteinkAddon:
         the per-pull budget is spent on them instead of being consumed by
         unrelated decks that happen to sort earlier in the due tree.
 
-        Within a scope the scheduler queue is only the first pass. Anki's
-        queue is capped by each deck's daily new/review allowance, so a deck
-        holding 100 new cards yields nothing once today's allowance is used
-        (or set to 0). An export is an offline snapshot rather than today's
-        study session, so a second pass tops the selection up straight from
-        the deck, in study order: new, review, re-review (relearning), then
-        remaining learning-step cards.
+        Within a scope the scheduler queue is the primary pass: what Anki
+        shows as due for a deck today is what the export carries, so a deck
+        with 100 due cards exports 100 cards and not its whole backlog.
+        Anki's queue is capped by each deck's daily new/review allowance
+        though, so a deck holding 100 new cards yields nothing once today's
+        allowance is used (or set to 0). Only for those decks -- the ones the
+        scheduler contributed no card at all for -- does a second pass top the
+        export up straight from the deck, in study order: new, review,
+        re-review (relearning), then remaining learning-step cards, so the
+        export is not empty.
         """
 
         max_cards_per_deck, max_total_cards = limits
@@ -1177,11 +1180,13 @@ class XteinkAddon:
         seen_card_ids: "set[int]",
         accept: Any,
     ) -> None:
-        """Fill the remaining budget straight from the selected decks.
+        """Fill the remaining budget from selected decks with nothing due.
 
-        Bypasses the scheduler's daily allowances (which are about pacing a
-        study session, not about what a device may carry offline) while
-        keeping Anki's study order and skipping suspended/buried cards.
+        Only decks the scheduler pass yielded no card for are topped up: a
+        zero (or exhausted) daily allowance would otherwise export them as
+        empty. Decks that did contribute keep exactly what Anki considers due
+        today, so the export matches the counts shown in Anki. Study order is
+        preserved and suspended/buried cards are skipped.
         """
 
         max_cards_per_deck, max_total_cards = limits
@@ -1191,7 +1196,8 @@ class XteinkAddon:
                 break
             deck_key = str(int(deck_id))
             taken = int(deck_counts.get(deck_key, {}).get("card_count", 0))
-            if taken >= max_cards_per_deck:
+            # The scheduler already spoke for this deck; don't add its backlog.
+            if taken > 0:
                 continue
 
             try:
