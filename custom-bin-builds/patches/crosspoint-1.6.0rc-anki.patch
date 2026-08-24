@@ -38036,6 +38036,39 @@ index 2b0b1d7..de857a6 100644
                                         {"russian", "ru", &russianHyphenator},
                                         {"spanish", "es", &spanishHyphenator},
                                         {"italian", "it", &italianHyphenator},
+diff --git a/lib/GfxRenderer/GfxRenderer.h b/lib/GfxRenderer/GfxRenderer.h
+index 6032e2e..33054cb 100644
+--- a/lib/GfxRenderer/GfxRenderer.h
++++ b/lib/GfxRenderer/GfxRenderer.h
+@@ -84,12 +84,6 @@ class GfxRenderer {
+   // app-level SD font setup when an SD family is loaded. See resolveTextFontId().
+   std::map<int, int> fallbackFontMap_;
+ 
+-  // If `text` contains a CJK codepoint that `fontId` cannot render and `fontId`
+-  // has a registered fallback, returns the fallback id; otherwise returns
+-  // fontId unchanged. The whole string is routed as a unit so each draw/measure
+-  // call stays single-font (consistent bit depth, metrics, wrapping).
+-  int resolveTextFontId(int fontId, const char* text, EpdFontFamily::Style style) const;
+-
+   // Batch-load `text`'s glyphs into an SD-card font's resident mini tables
+   // before a per-glyph measure/draw loop runs. Called when resolveTextFontId
+   // redirected a string to the SD fallback: UI screens (file browser, home)
+@@ -148,6 +142,15 @@ class GfxRenderer {
+   void prewarmFallbackText(int fontId, TextGetter getter, const void* ctx, uint32_t textCount,
+                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+   void prewarmFallbackText(int fontId, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
++  // If `text` contains a CJK codepoint that `fontId` cannot render and `fontId`
++  // has a registered fallback, returns the fallback id; otherwise returns
++  // fontId unchanged. The whole string is routed as a unit so each draw/measure
++  // call stays single-font (consistent bit depth, metrics, wrapping).
++  // Public alongside prewarmFallbackText for the same reason: a caller running
++  // its own per-glyph measure/draw loop (the Anki card renderer's block-upscale
++  // path) has to pick the family the renderer would have picked, or it walks the
++  // Latin-only primary and drops every CJK glyph.
++  int resolveTextFontId(int fontId, const char* text, EpdFontFamily::Style style) const;
+   bool isFontCacheScanning() const;
+   const std::map<int, EpdFontFamily>& getFontMap() const { return fontMap; }
+   void registerSdCardFont(int fontId, SdCardFont* font) { sdCardFonts_[fontId] = font; }
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
 index 1c2f887..3cd7ded 100644
 --- a/lib/I18n/translations/english.yaml
@@ -38297,6 +38330,21 @@ index 21ceeae..f692838 100644
    // Point size of the reader font. Only sizes the active family actually ships
    // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
    // available size (and persists the snap) whenever the family changes.
+diff --git a/src/SdCardFontSystem.cpp b/src/SdCardFontSystem.cpp
+index 77471a9..fe1591b 100644
+--- a/src/SdCardFontSystem.cpp
++++ b/src/SdCardFontSystem.cpp
+@@ -32,6 +32,10 @@ constexpr UiFontSize kUiFontSizes[] = {
+     {SMALL_FONT_ID, 8},
+     {UI_10_FONT_ID, 10},
+     {UI_12_FONT_ID, 12},
++    // UI_18 is the Anki card font's native medium size. Without an 18 pt SD
++    // fallback here, CJK cards render as missing glyphs on Medium while Small
++    // and Large (both UI_12-based) work.
++    {UI_18_FONT_ID, 18},
+ };
+ 
+ }  // namespace
 diff --git a/src/SettingsList.h b/src/SettingsList.h
 index f4f1a14..676805d 100644
 --- a/src/SettingsList.h
@@ -38389,10 +38437,10 @@ index 8d3c49e..2ecb781 100644
    void goToBoot();
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..69530c8
+index 0000000..6543ad0
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,2033 @@
+@@ -0,0 +1,2042 @@
 +#include "AnkiActivity.h"
 +
 +#include "../../anki/AnkiFirmwareVersion.h"
@@ -39352,7 +39400,11 @@ index 0000000..69530c8
 +int drawScaledText(const GfxRenderer& renderer, const int x, const int y, const char* text, const int scaleHalf,
 +                   const bool bold) {
 +  if (!text || !*text || scaleHalf < 2) return x;
-+  const int fontId = cardFontId();
++  // Resolve the SD CJK fallback the same way getTextWidth() already does, so the
++  // block-upscale path below draws from the family the width was measured with.
++  // Without this, Large (UI_12 @ 2x) walks the UI family directly and drops every
++  // CJK glyph, while its measured width still reserves space for them.
++  const int fontId = renderer.resolveTextFontId(cardFontId(), text, cardStyle(bold));
 +
 +  // 1.0× — use the fast built-in text path.
 +  if (scaleHalf == 2) {
@@ -40249,6 +40301,11 @@ index 0000000..69530c8
 +  const int pageWidth = renderer.getScreenWidth();
 +  const int pageHeight = renderer.getScreenHeight();
 +  const std::string& text = answer ? currentCard.back : currentCard.front;
++  // One batched SD read for the card's CJK glyphs instead of a read per glyph in
++  // the draw loop; a no-op for Latin cards and when no SD fallback is registered.
++  // Both styles are prewarmed because bold runs are common in card bodies.
++  renderer.prewarmFallbackText(cardFontId(), text.c_str(), EpdFontFamily::REGULAR);
++  renderer.prewarmFallbackText(cardFontId(), text.c_str(), EpdFontFamily::BOLD);
 +  // 1→UI_12@1×, 2→UI_18@1× (native medium), 3→UI_12@2×
 +  const int scaleHalf = fontScaleToHalf(ANKI_STORE.getFontScale());
 +  const bool landscape = ANKI_STORE.isLandscapeCards();

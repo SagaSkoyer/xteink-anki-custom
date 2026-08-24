@@ -78,8 +78,13 @@ glyphs before copying the image here.
   medium size) and deliberately skip the Arabic presentation forms — UI_18 is
   never used for menus, and those forms cost roughly 700 KB of flash the app
   partition cannot spare.
-- Build footprint: RAM 16.8% (54,996 B static), Flash 78.5% (5,144,563 B of the
+- Build footprint: RAM 16.8% (54,996 B static), Flash 78.5% (5,144,705 B of the
   6,553,600-byte app partition — about 1.34 MB free).
+- Verified by rebuilding from a fresh clone with only the committed patch: same
+  size and same flash figure, differing in 101 bytes of the ESP app descriptor
+  (project name, build timestamp, and the trailing image digest), so the
+  checksum in `SHA256SUMS` is the one for the committed image rather than a
+  reproducible-build fingerprint.
 
 ## Deliberate removals
 
@@ -109,20 +114,19 @@ SD-card font family, which `SdCardFontSystem` registers as a size-matched
 fallback for the built-in UI fonts. Upload a CJK family under **Fonts** in the
 web UI.
 
-Two gaps apply to Anki cards specifically in this build:
+All three Anki card sizes render CJK from that fallback:
 
-- The fallback table (`kUiFontSizes` in `src/SdCardFontSystem.cpp`) covers the
-  8/10/12 pt UI fonts but not UI_18, so the **Medium** card size has no CJK
-  fallback.
-- The **Large** card size block-upscales UI_12 through the Anki activity's own
-  glyph loop, which reads the font family directly and never consults the
-  fallback map.
+- **Medium** (UI_18) is registered in the fallback table (`kUiFontSizes` in
+  `src/SdCardFontSystem.cpp`), which upstream stops at 12 pt. The SD family must
+  ship an 18 pt `.cpfont`; if it does not, the size is skipped and Medium falls
+  back to missing glyphs while Small and Large still work.
+- **Large** (UI_12 block-upscaled) resolves the fallback in the Anki card
+  renderer's own glyph loop via `GfxRenderer::resolveTextFontId`, which this
+  patch makes public for that caller. `getTextWidth` already resolved
+  internally, so before the fix the layout reserved space for CJK glyphs the
+  draw loop then dropped.
+- Card text is prewarmed in both regular and bold, so a card costs one batched
+  SD read per style instead of a file open per glyph on every repaint.
 
-Until those are addressed, set **Anki → Anki settings → Card font → Reader / SD
-font**. That points cards straight at the SD family at every size, so CJK
-renders on Small, Medium, and Large alike.
-- Verified by rebuilding from a fresh clone with only the committed patch: same
-  size and same flash figure, differing in 101 bytes of the ESP app descriptor
-  (project name, build timestamp, and the trailing image digest), so the
-  checksum in `SHA256SUMS` is the one for the committed image rather than a
-  reproducible-build fingerprint.
+Setting **Anki → Anki settings → Card font → Reader / SD font** still works and
+points cards straight at the SD family, bypassing the UI-font fallback entirely.
