@@ -34,7 +34,7 @@ Known limits of the offline model: learning steps after Again/Hard are re-queued
 4. **Tools → Xteink Status** → note **LAN URL** and **API token**.
 5. Allow Anki through the OS firewall for local network connections.
 
-Optional config: **Tools → Add-ons → Xteink E-Ink Offline Sync → Config** (`max_cards`, port, …).
+Optional config: **Tools → Add-ons → Xteink Offline Reviews → Config** (`max_cards`, port, …).
 
 ### 2. Xteink device
 
