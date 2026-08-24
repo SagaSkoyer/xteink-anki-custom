@@ -1,4 +1,4 @@
-# Xteink X4 Offline Sync
+# Xteink Offline Sync
 
 Nach dem ersten Start erzeugt das Add-on automatisch einen zufälligen
 `api_token`. Der Xteink muss ihn bei `/pull` und `/push` entweder als

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ASCII layout simulation for Xteink X4 Anki screens.
+"""ASCII layout simulation for Xteink Anki screens.
 
 Covers portrait (480×800) and landscape (800×480):
   - card status strip (optional front preview, progress bar, stats, deck)
@@ -349,7 +349,7 @@ SAMPLES = [
 
 
 def main() -> None:
-    print("Xteink X4 Anki layout simulation — portrait + landscape, front preview on answer\n")
+    print("Xteink Anki layout simulation — portrait + landscape, front preview on answer\n")
 
     print("=" * 60)
     print("MENU")

@@ -1,4 +1,4 @@
-"""Anki add-on that exposes a small offline-review API for the Xteink X4."""
+"""Anki add-on that exposes a small offline-review API for the Xteink."""
 
 from __future__ import annotations
 
