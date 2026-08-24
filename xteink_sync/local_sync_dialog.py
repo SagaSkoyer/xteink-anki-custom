@@ -21,17 +21,16 @@ from typing import TYPE_CHECKING, List
 
 from aqt import mw
 from aqt.qt import (
-    QAbstractItemView,
     QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     Qt,
     QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -75,10 +74,11 @@ class LocalSyncDialog(QDialog):
         layout.addLayout(folder_row)
 
         layout.addWidget(QLabel(self._t("local_sync_deck_label")))
-        self.deck_list = QListWidget(tab)
-        self.deck_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.deck_tree = QTreeWidget(tab)
+        self.deck_tree.setHeaderHidden(True)
         self._populate_decks()
-        layout.addWidget(self.deck_list)
+        self.deck_tree.itemChanged.connect(self._on_deck_item_changed)
+        layout.addWidget(self.deck_tree)
 
         export_button = QPushButton(self._t("local_sync_export_button"), tab)
         export_button.clicked.connect(self._on_export_clicked)
@@ -87,27 +87,75 @@ class LocalSyncDialog(QDialog):
         return tab
 
     def _populate_decks(self) -> None:
-        self.deck_list.clear()
-        if not self.addon.collection_ready():
-            return
+        self.deck_tree.blockSignals(True)
         try:
-            entries = sorted(mw.col.decks.all_names_and_ids(), key=lambda e: e.name)
-        except Exception:
-            LOGGER.exception("Could not list decks for eInk local export")
+            self.deck_tree.clear()
+            if not self.addon.collection_ready():
+                return
+            try:
+                entries = sorted(mw.col.decks.all_names_and_ids(), key=lambda e: e.name)
+            except Exception:
+                LOGGER.exception("Could not list decks for eInk local export")
+                return
+
+            # Group flat "Parent::Child" deck names into a tree so subdecks can
+            # be collapsed/expanded under their parent via the branch chevron.
+            nodes: dict = {}  # full path segments tuple -> QTreeWidgetItem
+            for entry in entries:
+                segments = tuple(entry.name.split("::"))
+                parent_widget = self.deck_tree.invisibleRootItem()
+                for depth in range(1, len(segments) + 1):
+                    path = segments[:depth]
+                    item = nodes.get(path)
+                    if item is None:
+                        item = QTreeWidgetItem(parent_widget, [path[-1]])
+                        item.setFlags(
+                            item.flags()
+                            | Qt.ItemFlag.ItemIsUserCheckable
+                            | Qt.ItemFlag.ItemIsAutoTristate
+                        )
+                        item.setCheckState(Qt.CheckState.Unchecked)
+                        nodes[path] = item
+                    parent_widget = item
+                # The leaf item now corresponds to this actual Anki deck.
+                nodes[segments].setData(0, Qt.ItemDataRole.UserRole, int(entry.id))
+
+            self.deck_tree.expandAll()
+        finally:
+            self.deck_tree.blockSignals(False)
+
+    def _on_deck_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
+        state = item.checkState(0)
+        if state == Qt.CheckState.PartiallyChecked:
             return
-        for entry in entries:
-            item = QListWidgetItem(entry.name)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Unchecked)
-            item.setData(Qt.ItemDataRole.UserRole, int(entry.id))
-            self.deck_list.addItem(item)
+        self.deck_tree.blockSignals(True)
+        try:
+            self._set_children_check_state(item, state)
+        finally:
+            self.deck_tree.blockSignals(False)
+
+    def _set_children_check_state(
+        self, item: QTreeWidgetItem, state: Qt.CheckState
+    ) -> None:
+        for i in range(item.childCount()):
+            child = item.child(i)
+            child.setCheckState(0, state)
+            self._set_children_check_state(child, state)
 
     def _checked_deck_ids(self) -> List[int]:
         ids: List[int] = []
-        for i in range(self.deck_list.count()):
-            item = self.deck_list.item(i)
-            if item.checkState() == Qt.CheckState.Checked:
-                ids.append(int(item.data(Qt.ItemDataRole.UserRole)))
+
+        def walk(item: QTreeWidgetItem) -> None:
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if child.checkState(0) == Qt.CheckState.Checked:
+                    deck_id = child.data(0, Qt.ItemDataRole.UserRole)
+                    if deck_id is not None:
+                        ids.append(int(deck_id))
+                else:
+                    walk(child)
+
+        walk(self.deck_tree.invisibleRootItem())
         return ids
 
     def _on_export_clicked(self) -> None:
