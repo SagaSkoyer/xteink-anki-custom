@@ -1380,7 +1380,7 @@ class XteinkAddon:
             elif bool(self.config.get("mdns_enabled", True)):
                 message += (
                     "\n\nmDNS: not advertising "
-                    "(dns-sd/zeroconf unavailable — set server URL manually on X4)"
+                    "(dns-sd/zeroconf unavailable — set server URL manually on device)"
                 )
         showInfo(message, title=_t("status_title"))
 
