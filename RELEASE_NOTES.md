@@ -1,3 +1,46 @@
+# v2.7.0 — fast card flips with an SD (CJK) font
+
+## Firmware
+
+Flipping front → back could take ~8 s with a CJK card font while back → next
+card stayed under a second. Both directions run the same `renderCard()`, so the
+asymmetry was never the side — it was that the back holds more text and the
+renderer's cost grew far faster than linearly in it. Four changes, all in the
+Anki card renderer:
+
+- **Measurement no longer touches glyph bitmaps.** `baseTextWidth()` measured
+  with `GfxRenderer::getTextWidth`, which goes through `getTextBounds` →
+  `getGlyph`: every glyph missing from the SD font's resident arena cost a full
+  `.cpfont` file open in `SdCardFont::onGlyphMiss`, cached in a ring of only
+  eight. It now measures with `GfxRenderer::getTextAdvanceX`, which reads the
+  advance-only table — a RAM binary search, no bitmaps, no SD. That is also the
+  measure `drawText` lays out with, so wrapping and pen advance now agree
+  exactly (it is advance width, not the ink bounding box).
+- **The advance table is primed per card and accumulates over the deck.**
+  `loadCurrentCard()` calls `ensureSdCardFontReady()` for both sides. The table
+  is ~8 bytes per codepoint, is not subject to the arena's `MAX_PAGE_GLYPHS`
+  cap, and survives `clearCache()`, so it converges over a session: one batched
+  SD pass for a new script, nothing at all once the deck's characters are in.
+  The lookup resolves the UI font's *fallback* id first — the CJK family is
+  registered with `setFallbackFont`, so priming the raw card font id would
+  quietly build nothing.
+- **Line breaking is searched, not walked.** The wrap scan re-measured
+  `lineStart..next` once per codepoint, so a line of L glyphs cost L
+  measurements of O(L) each. Prefix width is monotonic, so the same predicate is
+  now galloped and bisected: 2.5–4.7× fewer measurement calls and 2–4.8× fewer
+  codepoints walked on a full card side, with identical break positions
+  (verified against the old algorithm over ~40,000 randomized cases covering
+  CJK, bold markers, table controls, tabs and Greek).
+- **Bitmap prewarm is bounded to what is drawn.** A card is one screen with no
+  paging, but the prewarm walked the whole side — so a long back paid a full SD
+  pass, and spent its share of the arena's glyph budget, on text below the fold
+  that is never rendered. Overshooting that budget is what drops the font back
+  to per-glyph faulting. Bold is now warmed only when the visible text uses it.
+
+No behaviour change for Latin cards on the built-in font, and no layout change
+beyond sub-pixel differences from measuring advance width instead of the ink
+box. Flash required.
+
 # v2.6.0 — stripped-down review pane
 
 ## Firmware

@@ -38070,7 +38070,7 @@ index 6032e2e..33054cb 100644
    const std::map<int, EpdFontFamily>& getFontMap() const { return fontMap; }
    void registerSdCardFont(int fontId, SdCardFont* font) { sdCardFonts_[fontId] = font; }
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
-index 1c2f887..e826d04 100644
+index 1c2f887..00e0af5 100644
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
 @@ -6,6 +6,65 @@ STR_CROSSPOINT: "CrossPoint"
@@ -38140,7 +38140,7 @@ index 1c2f887..e826d04 100644
  STR_FILE_TRANSFER: "File Transfer"
  STR_SETTINGS_TITLE: "Settings"
 diff --git a/lib/I18n/translations/german.yaml b/lib/I18n/translations/german.yaml
-index 26f4fcf..fffe046 100644
+index 26f4fcf..4216f00 100644
 --- a/lib/I18n/translations/german.yaml
 +++ b/lib/I18n/translations/german.yaml
 @@ -6,6 +6,62 @@ STR_CROSSPOINT: "CrossPoint"
@@ -38207,7 +38207,7 @@ index 26f4fcf..fffe046 100644
  STR_FILE_TRANSFER: "Datentransfer"
  STR_SETTINGS_TITLE: "Einstellungen"
 diff --git a/platformio.ini b/platformio.ini
-index e07c59d..4423390 100644
+index e07c59d..d97229e 100644
 --- a/platformio.ini
 +++ b/platformio.ini
 @@ -5,6 +5,8 @@ extra_configs = platformio.local.ini
@@ -38215,7 +38215,7 @@ index e07c59d..4423390 100644
  [crosspoint]
  version = 1.5.0
 +; Xteink Anki custom build: CrossPoint 1.6.0 beta RC + xteink-anki package version.
-+anki_version = 1.6.0rc-anki-2.6.0
++anki_version = 1.6.0rc-anki-2.7.0
  
  [base]
  platform = https://github.com/pioarduino/platform-espressif32/releases/download/55.03.37/platform-espressif32.zip
@@ -38438,10 +38438,10 @@ index 8d3c49e..2ecb781 100644
    void goToBoot();
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..3710d1b
+index 0000000..6cb4e5d
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,1836 @@
+@@ -0,0 +1,1949 @@
 +#include "AnkiActivity.h"
 +
 +#include "../../anki/AnkiFirmwareVersion.h"
@@ -38519,6 +38519,12 @@ index 0000000..3710d1b
 +
 +EpdFontFamily::Style cardStyle(const bool bold) { return bold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR; }
 +
++// Styles a card body can use: regular (bit 0) + bold (bit 1). Italic never
++// appears in XFD, so warming all four styles would read the SD for nothing.
++// SdCardFont::resolveStyleMask() folds bold back onto regular for families that
++// ship only one style.
++constexpr uint8_t kCardStyleMask = 0x03;
++
 +// XFD Phase B: STX/ETX mark bold on/off (from Anki converter). Visible ** toggles
 +// bold as a fallback when markers were not applied (raw Markdown on the wire).
 +constexpr char kBoldOn = '\x02';
@@ -38531,8 +38537,33 @@ index 0000000..3710d1b
 +constexpr char kTableRs = '\x04';
 +constexpr char kCellUs = '\x06';
 +
++// Advance width, NOT the ink bounding box. getTextWidth() measures through
++// getTextBounds(), which needs a glyph bitmap per codepoint: on an SD card font
++// every glyph the resident mini arena is missing costs a .cpfont file open in
++// SdCardFont::onGlyphMiss(), and the wrap loop asks for the same glyphs many
++// times over. getTextAdvanceX() reads the persistent advance-only table instead
++// (SdCardFont::buildAdvanceTable, primed in loadCurrentCard) — a RAM binary
++// search, no bitmaps, no SD. It is also the measure drawText actually lays out
++// with, so wrapping and pen advance now agree exactly.
 +int baseTextWidth(const GfxRenderer& renderer, const char* text, const bool bold) {
-+  return renderer.getTextWidth(cardFontId(), text, cardStyle(bold));
++  return renderer.getTextAdvanceX(cardFontId(), text, cardStyle(bold));
++}
++
++// Build (or extend) the SD font's persistent advance table for `text`, so the
++// measurements above read RAM instead of faulting glyphs off the SD card.
++//
++// The resolve is load-bearing: ensureSdCardFontReady() looks the SD font up by
++// the id it is handed, but a CJK card normally reaches its glyphs through the
++// UI font's *fallback* entry (SdCardFontSystem registers the family with
++// setFallbackFont, under its own font id), so passing the raw card font id
++// would miss the map and quietly build nothing. Resolve exactly the way
++// getTextAdvanceX() does when it reads the table back. A card in a font with no
++// SD family — or with no CJK in it — resolves to the primary and this is a
++// no-op, which is correct: there is no SD font to prime.
++void primeAdvanceTable(const GfxRenderer& renderer, const std::string& text) {
++  if (text.empty()) return;
++  const int fontId = renderer.resolveTextFontId(cardFontId(), text.c_str(), EpdFontFamily::REGULAR);
++  renderer.ensureSdCardFontReady(fontId, text.c_str(), kCardStyleMask);
 +}
 +
 +// Defined later (scaled glyph path); needed by drawStyledRange.
@@ -38604,6 +38635,28 @@ index 0000000..3710d1b
 +  if (position < text.size() && text[position] == '\r') position++;
 +  if (position < text.size() && text[position] == '\n') position++;
 +  return position;
++}
++
++// One layout step: a whole style marker (zero width) or one UTF-8 codepoint.
++// Always advances, so a caller stepping to a limit cannot stall on malformed
++// input. This and layoutBoundaryAt() back the line-break search in drawText():
++// stepping bytes is free next to measuring them, so the search walks boundaries
++// on demand instead of materialising them into an array.
++size_t nextLayoutBoundary(const std::string& text, const size_t position) {
++  if (position >= text.size()) return text.size();
++  if (isStyleMarkerAt(text, position)) {
++    bool scratch = false;
++    const size_t marker = consumeStyleMarker(text, position, scratch);
++    if (marker > position) return marker;
++  }
++  const size_t next = nextUtf8Boundary(text, position);
++  return next > position ? next : position + 1;
++}
++
++// Byte offset of the n-th layout boundary after `from`, clamped to `to`.
++size_t layoutBoundaryAt(const std::string& text, size_t from, const size_t to, const size_t n) {
++  for (size_t i = 0; i < n && from < to; i++) from = nextLayoutBoundary(text, from);
++  return std::min(from, to);
 +}
 +
 +bool startsWithTableHeader(const std::string& text, const size_t position) {
@@ -39314,7 +39367,7 @@ index 0000000..3710d1b
 +int drawScaledText(const GfxRenderer& renderer, const int x, const int y, const char* text, const int scaleHalf,
 +                   const bool bold) {
 +  if (!text || !*text || scaleHalf < 2) return x;
-+  // Resolve the SD CJK fallback the same way getTextWidth() already does, so the
++  // Resolve the SD CJK fallback the same way the measure path already does, so the
 +  // block-upscale path below draws from the family the width was measured with.
 +  // Without this, Large (UI_12 @ 2x) walks the UI family directly and drops every
 +  // CJK glyph, while its measured width still reserves space for them.
@@ -39323,14 +39376,14 @@ index 0000000..3710d1b
 +  // 1.0× — use the fast built-in text path.
 +  if (scaleHalf == 2) {
 +    renderer.drawText(fontId, x, y, text, true, cardStyle(bold));
-+    return x + renderer.getTextWidth(fontId, text, cardStyle(bold));
++    return x + renderer.getTextAdvanceX(fontId, text, cardStyle(bold));
 +  }
 +
 +  const auto& fontMap = renderer.getFontMap();
 +  const auto fontIt = fontMap.find(fontId);
 +  if (fontIt == fontMap.end()) {
 +    renderer.drawText(fontId, x, y, text, true, cardStyle(bold));
-+    return x + renderer.getTextWidth(fontId, text, cardStyle(bold));
++    return x + renderer.getTextAdvanceX(fontId, text, cardStyle(bold));
 +  }
 +
 +  const EpdFontFamily& font = fontIt->second;
@@ -39844,6 +39897,17 @@ index 0000000..3710d1b
 +  }
 +  if (currentCard.front.empty()) currentCard.front = tr(STR_ANKI_EMPTY_SIDE);
 +  if (currentCard.back.empty()) currentCard.back = tr(STR_ANKI_EMPTY_SIDE);
++
++  // Prime the SD font's advance-only table for both sides before either is laid
++  // out. This is what makes baseTextWidth() free: the table is advance-only
++  // (8 bytes per codepoint, no bitmaps), is NOT subject to the mini arena's
++  // MAX_PAGE_GLYPHS cap, and persists across clearCache() — so it accumulates
++  // over the deck instead of being rebuilt per card. buildAdvanceTable() skips
++  // codepoints already cached and opens the .cpfont only when something is
++  // actually missing, so this costs one batched SD pass on the first card of a
++  // new script and nothing at all once the deck's characters are resident.
++  primeAdvanceTable(renderer, currentCard.front);
++  primeAdvanceTable(renderer, currentCard.back);
 +  return true;
 +}
 +
@@ -40125,44 +40189,76 @@ index 0000000..3710d1b
 +
 +    const size_t lineStart = position;
 +    const bool lineBold = boldStateAt(text, lineStart);
-+    size_t scan = position;
++    const size_t hardEnd = lineEndPos(text, lineStart);
 +    size_t lineEnd = position;
 +    size_t nextPosition = position;
-+    size_t lastBreak = std::string::npos;
 +
-+    while (scan < text.size() && text[scan] != '\n' && text[scan] != '\r') {
-+      size_t next;
-+      if (isStyleMarkerAt(text, scan)) {
-+        bool scratch = false;
-+        next = consumeStyleMarker(text, scan, scratch);
-+      } else {
-+        next = nextUtf8Boundary(text, scan);
-+        if (text[scan] == ' ' || text[scan] == '\t') lastBreak = next;
-+      }
++    // Width uses the full style timeline from lineStart (markers are zero-width).
++    // scale here is half-units (2/3/4); convert with scalePx.
++    const auto fits = [&](const size_t end) {
++      return scalePx(styledRangeWidth(renderer, text, lineStart, end, lineBold), scale) <= width;
++    };
 +
-+      // Width uses the full style timeline from lineStart (markers are zero-width).
-+      // scale here is half-units (2/3/4); convert with scalePx.
-+      if (scalePx(styledRangeWidth(renderer, text, lineStart, next, lineBold), scale) > width) {
-+        if (lastBreak != std::string::npos && lastBreak > lineStart) {
-+          lineEnd = lastBreak;
-+          nextPosition = lastBreak;
-+        } else if (scan > lineStart) {
-+          lineEnd = scan;
-+          nextPosition = scan;
-+        } else {
-+          // Force progress: at least one glyph or one marker.
-+          lineEnd = next;
-+          nextPosition = next;
-+        }
++    // Find the last boundary that still fits. The old scan re-measured
++    // lineStart..next once per codepoint, so a line of L glyphs cost L
++    // measurements of O(L) each — the single biggest cost on a full card side.
++    // Prefix width is non-decreasing in `end` (every glyph advance is >= 0), so
++    // the predicate can be searched instead of walked: gallop out from the
++    // start, then bisect the bracketed range. Probe lengths track the break
++    // point, never the end of a long unbroken paragraph — measuring straight to
++    // hardEnd first would re-walk the whole rest of the card on every line.
++    size_t cut = hardEnd;
++    size_t lo = 0;      // boundary count known to fit
++    size_t hi = 1;      // boundary count known not to fit, once the gallop stops
++    bool wraps = false;
++    for (;;) {
++      const size_t probe = layoutBoundaryAt(text, lineStart, hardEnd, hi);
++      if (!fits(probe)) {
++        wraps = true;
 +        break;
 +      }
-+      lineEnd = next;
-+      nextPosition = next;
-+      scan = next;
++      lo = hi;
++      if (probe >= hardEnd) break;  // the whole paragraph line fits
++      hi *= 2;
++    }
++    if (wraps) {
++      while (lo + 1 < hi) {
++        const size_t mid = lo + (hi - lo) / 2;
++        if (fits(layoutBoundaryAt(text, lineStart, hardEnd, mid))) {
++          lo = mid;
++        } else {
++          hi = mid;
++        }
++      }
++      cut = layoutBoundaryAt(text, lineStart, hardEnd, lo);
 +    }
 +
-+    if (scan < text.size() && (text[scan] == '\n' || text[scan] == '\r') && nextPosition == scan) {
-+      nextPosition = nextLineStartPos(text, scan);
++    if (cut >= hardEnd) {
++      lineEnd = nextPosition = hardEnd;
++    } else {
++      // Break at the last space/tab at or before the overflow point, matching
++      // the old scan (which recorded a break for the character it was about to
++      // test, hence the inclusive bound at `cut`).
++      size_t lastBreak = std::string::npos;
++      for (size_t p = cut + 1; p > lineStart; p--) {
++        const char ch = text[p - 1];
++        if (ch == ' ' || ch == '\t') {
++          lastBreak = p;
++          break;
++        }
++      }
++      if (lastBreak != std::string::npos && lastBreak > lineStart) {
++        lineEnd = nextPosition = lastBreak;
++      } else if (cut > lineStart) {
++        lineEnd = nextPosition = cut;
++      } else {
++        // Force progress: at least one glyph or one marker.
++        lineEnd = nextPosition = nextLayoutBoundary(text, lineStart);
++      }
++    }
++
++    if (hardEnd < text.size() && (text[hardEnd] == '\n' || text[hardEnd] == '\r') && nextPosition == hardEnd) {
++      nextPosition = nextLineStartPos(text, hardEnd);
 +    }
 +
 +    // Trim trailing spaces/tabs only (keep style markers).
@@ -40179,14 +40275,7 @@ index 0000000..3710d1b
 +    // Ascender offset so the first line is not clipped under the header.
 +    const int baseline = yPos + asc;
 +    drawStyledRange(renderer, x, baseline, text, lineStart, trimEnd, scale, lineBold);
-+    if (nextPosition <= position) {
-+      if (isStyleMarkerAt(text, position)) {
-+        bool scratch = lineBold;
-+        nextPosition = consumeStyleMarker(text, position, scratch);
-+      } else {
-+        nextPosition = nextUtf8Boundary(text, position);
-+      }
-+    }
++    if (nextPosition <= position) nextPosition = nextLayoutBoundary(text, position);
 +    position = nextPosition;
 +    yPos += lineHeight;
 +  }
@@ -40199,11 +40288,6 @@ index 0000000..3710d1b
 +  const auto& metrics = UITheme::getInstance().getMetrics();
 +  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
 +  const std::string& text = answer ? currentCard.back : currentCard.front;
-+  // One batched SD read for the card's CJK glyphs instead of a read per glyph in
-+  // the draw loop; a no-op for Latin cards and when no SD fallback is registered.
-+  // Both styles are prewarmed because bold runs are common in card bodies.
-+  renderer.prewarmFallbackText(cardFontId(), text.c_str(), EpdFontFamily::REGULAR);
-+  renderer.prewarmFallbackText(cardFontId(), text.c_str(), EpdFontFamily::BOLD);
 +  // 1→UI_12@1×, 2→UI_18@1× (native medium), 3→UI_12@2×
 +  const int scaleHalf = fontScaleToHalf(ANKI_STORE.getFontScale());
 +  const bool landscape = ANKI_STORE.isLandscapeCards();
@@ -40222,6 +40306,35 @@ index 0000000..3710d1b
 +  const int availableHeight = std::max(1, contentBottom - contentTop);
 +  const int maxLines = std::max(1, availableHeight / lineHeight);
 +  const int contentWidth = safe.width - 2 * (metrics.contentSidePadding + 4);
++
++  // One batched SD read for the glyph bitmaps the draw loop is about to need,
++  // instead of a .cpfont open per glyph in SdCardFont::onGlyphMiss(); a no-op
++  // for Latin cards and when no SD fallback is registered.
++  //
++  // Bounded to what can actually be drawn. A card is one screen with no paging,
++  // so prewarming the whole side made a long back pay a full SD pass — and
++  // spend its share of the mini arena's MAX_PAGE_GLYPHS budget — on text below
++  // the fold that is never rendered. Overshooting that budget is what drops the
++  // font back to per-glyph faulting. The cap counts glyphs at the density of
++  // the font's own narrowest common Latin advance, so it is an upper bound for
++  // any script (CJK draws far fewer glyphs per line); anything past it still
++  // renders, just by faulting in.
++  const int narrowAdvance =
++      std::max(1, scalePx(renderer.getTextAdvanceX(cardFontId(), "n", EpdFontFamily::REGULAR), scaleHalf));
++  const size_t visibleGlyphCap =
++      static_cast<size_t>(maxLines) * static_cast<size_t>(contentWidth / narrowAdvance + 1);
++  const size_t prewarmEnd = layoutBoundaryAt(text, 0, text.size(), visibleGlyphCap);
++  // Only copy when the cap actually trims something — prewarmFallbackText takes
++  // a C string, and a card that already fits should not pay for a duplicate.
++  std::string clipped;
++  if (prewarmEnd < text.size()) clipped.assign(text, 0, prewarmEnd);
++  const char* visible = prewarmEnd < text.size() ? clipped.c_str() : text.c_str();
++  renderer.prewarmFallbackText(cardFontId(), visible, EpdFontFamily::REGULAR);
++  // Bold is a second style bitstream: another arena and another SD pass. Most
++  // cards have no bold run at all, so only warm it when the visible text does.
++  if (text.find(kBoldOn) < prewarmEnd || text.find("**") < prewarmEnd) {
++    renderer.prewarmFallbackText(cardFontId(), visible, EpdFontFamily::BOLD);
++  }
 +
 +  drawText(text, x, contentTop, contentWidth, maxLines, lineHeight, scaleHalf);
 +
@@ -40280,7 +40393,7 @@ index 0000000..3710d1b
 +}
 diff --git a/src/activities/anki/AnkiActivity.h b/src/activities/anki/AnkiActivity.h
 new file mode 100644
-index 0000000..9e6a18f
+index 0000000..08d1c32
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.h
 @@ -0,0 +1,84 @@
@@ -40757,7 +40870,7 @@ index ab0a6c5..9ce8483 100644
      const auto& families = registry_->getFamilies();
 diff --git a/src/anki/AnkiFirmwareVersion.h b/src/anki/AnkiFirmwareVersion.h
 new file mode 100644
-index 0000000..7176f25
+index 0000000..edf72bb
 --- /dev/null
 +++ b/src/anki/AnkiFirmwareVersion.h
 @@ -0,0 +1,26 @@
@@ -40767,9 +40880,9 @@ index 0000000..7176f25
 +#include <cstring>
 +
 +// xteink-anki package version (bump with RELEASE_NOTES / dist binary).
-+// CROSSPOINT_VERSION is set by PlatformIO (e.g. 1.4.1-anki-2.6.0 on gh_release).
++// CROSSPOINT_VERSION is set by PlatformIO (e.g. 1.4.1-anki-2.7.0 on gh_release).
 +#ifndef XTEINK_ANKI_FW_VERSION
-+#define XTEINK_ANKI_FW_VERSION "2.6.0"
++#define XTEINK_ANKI_FW_VERSION "2.7.0"
 +#endif
 +
 +// Label for Anki UI headers (static buffer — UI thread only).

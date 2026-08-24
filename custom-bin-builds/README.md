@@ -15,7 +15,7 @@ Upstream base: <https://github.com/crosspoint-reader/crosspoint-reader>
 
 - Tag: `1.6.0rc` (the 1.6.0 beta RC line)
 - Commit: `6a501bba544d9e80598811dbdf2134d1bcb1ebd2`
-- Reported firmware version: `1.6.0rc-anki-2.6.0`
+- Reported firmware version: `1.6.0rc-anki-2.7.0`
 
 ## Device compatibility
 
@@ -78,7 +78,7 @@ glyphs before copying the image here.
   medium size) and deliberately skip the Arabic presentation forms — UI_18 is
   never used for menus, and those forms cost roughly 700 KB of flash the app
   partition cannot spare.
-- Build footprint: RAM 16.8% (54,996 B static), Flash 78.5% (5,147,117 B of the
+- Build footprint: RAM 16.8% (54,996 B static), Flash 78.5% (5,147,847 B of the
   6,553,600-byte app partition — about 1.34 MB free).
 - Verified by rebuilding from a fresh clone with only the committed patch: same
   size and same flash figure, differing only in a handful of bytes in the ESP
@@ -125,8 +125,17 @@ All three Anki card sizes render CJK from that fallback:
   patch makes public for that caller. `getTextWidth` already resolved
   internally, so before the fix the layout reserved space for CJK glyphs the
   draw loop then dropped.
-- Card text is prewarmed in both regular and bold, so a card costs one batched
-  SD read per style instead of a file open per glyph on every repaint.
+- Glyph bitmaps are prewarmed in one batched SD read instead of a file open per
+  glyph, bounded to the text that fits on screen (a card has no paging, so
+  prewarming a long back's invisible tail only spent the resident arena's glyph
+  budget), and bold is warmed only when the visible text actually uses it.
+- Layout measurement does not read bitmaps at all: `loadCurrentCard` primes the
+  SD family's persistent advance-only table (`SdCardFont::buildAdvanceTable`,
+  ~8 bytes per codepoint, no `MAX_PAGE_GLYPHS` cap, survives `clearCache()`) and
+  the card renderer measures through `GfxRenderer::getTextAdvanceX`. Before
+  this, every width query walked `getTextBounds` → `getGlyph`, so any glyph the
+  arena was missing cost a `.cpfont` open in `SdCardFont::onGlyphMiss` — with an
+  8-entry overflow ring, a CJK back thrashed it on every flip.
 
 Setting **Anki → Anki settings → Card font → Reader / SD font** still works and
 points cards straight at the SD family, bypassing the UI-font fallback entirely.
