@@ -136,6 +136,14 @@ the URL stable.
 3. **Learn cards** — fully offline; turn Wi-Fi off if you like.
 4. **Upload reviews** — when you are done and Anki is open again.
 
+**No Wi-Fi, or don't want to pair right now?** **Load today's cards from SD**
+does the same thing from a file instead of the network — put
+`/Anki/cards.ndjson` on the SD card and select it from the same menu. See
+`../sd-import/` for a script that builds that file from a CSV. These cards
+are not linked to your Anki collection, so grading them cannot be uploaded
+back to Anki — see the caveat in `sd-import/README.md` before relying on it
+for anything you need synced.
+
 Reviews live on the SD card under `/.crosspoint/anki-*` and are only deleted
 once Anki confirms the batch, so a failed upload loses nothing.
 

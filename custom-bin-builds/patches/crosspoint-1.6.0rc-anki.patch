@@ -38070,16 +38070,19 @@ index 6032e2e..33054cb 100644
    const std::map<int, EpdFontFamily>& getFontMap() const { return fontMap; }
    void registerSdCardFont(int fontId, SdCardFont* font) { sdCardFonts_[fontId] = font; }
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
-index 1c2f887..3cd7ded 100644
+index 1c2f887..e826d04 100644
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -6,6 +6,63 @@ STR_CROSSPOINT: "CrossPoint"
+@@ -6,6 +6,66 @@ STR_CROSSPOINT: "CrossPoint"
  STR_BOOTING: "BOOTING"
  STR_SLEEPING: "SLEEPING"
  STR_ENTERING_SLEEP: "Going to sleep"
 +STR_ANKI: "Anki"
 +STR_ANKI_LEARN: "Learn cards"
 +STR_ANKI_DOWNLOAD: "Download today's cards"
++STR_ANKI_LOAD_SD: "Load today's cards from SD"
++STR_ANKI_LOADING_SD: "Loading from SD..."
++STR_ANKI_LOAD_SD_OK: "Cards loaded from SD"
 +STR_ANKI_UPLOAD: "Upload reviews"
 +STR_ANKI_SETTINGS: "Anki settings"
 +STR_ANKI_SERVER_URL: "Mac server URL"
@@ -38437,10 +38440,10 @@ index 8d3c49e..2ecb781 100644
    void goToBoot();
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..6543ad0
+index 0000000..3710d1b
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,2042 @@
+@@ -0,0 +1,2079 @@
 +#include "AnkiActivity.h"
 +
 +#include "../../anki/AnkiFirmwareVersion.h"
@@ -38503,6 +38506,8 @@ index 0000000..6543ad0
 +      return tr(STR_ANKI_LEARN);
 +    case AnkiActivity::MenuAction::DOWNLOAD:
 +      return tr(STR_ANKI_DOWNLOAD);
++    case AnkiActivity::MenuAction::LOAD_SD:
++      return tr(STR_ANKI_LOAD_SD);
 +    case AnkiActivity::MenuAction::UPLOAD:
 +      return tr(STR_ANKI_UPLOAD);
 +    case AnkiActivity::MenuAction::CONFIGURE:
@@ -39537,6 +39542,7 @@ index 0000000..6543ad0
 +  // Re-download only when no pending reviews/flags, so open grades stay consistent.
 +  if (!ANKI_STORE.hasPendingUpload()) {
 +    menuItems.push_back(MenuItem{MenuAction::DOWNLOAD, 0});
++    menuItems.push_back(MenuItem{MenuAction::LOAD_SD, 0});
 +  }
 +  menuItems.push_back(MenuItem{MenuAction::CONFIGURE, 0});
 +  if (selectedIndex >= static_cast<int>(menuItems.size())) selectedIndex = 0;
@@ -39656,6 +39662,9 @@ index 0000000..6543ad0
 +    case MenuAction::DOWNLOAD:
 +      startNetworkAction(NetworkAction::PULL);
 +      break;
++    case MenuAction::LOAD_SD:
++      performSdImport();
++      break;
 +    case MenuAction::UPLOAD:
 +      startNetworkAction(NetworkAction::PUSH);
 +      break;
@@ -39765,6 +39774,37 @@ index 0000000..6543ad0
 +  const bool pullOk = result == AnkiSyncClient::Error::OK && networkAction == NetworkAction::PULL;
 +  restartOnDismiss = !pullOk;
 +  networkAction = NetworkAction::NONE;
++  requestUpdate();
++}
++
++void AnkiActivity::performSdImport() {
++  state = State::WORKING;
++  message = tr(STR_ANKI_LOADING_SD);
++  detail.clear();
++  requestUpdateAndWait();
++
++  const bool ok = ANKI_STORE.installFromSdImport(detail);
++  if (ok) {
++    std::string loadError;
++    if (!ANKI_STORE.load(loadError)) {
++      state = State::ERROR;
++      message = loadError;
++      restartOnDismiss = true;
++    } else {
++      state = State::MESSAGE;
++      char buf[96];
++      snprintf(buf, sizeof(buf), "%s\n%u %s", tr(STR_ANKI_LOAD_SD_OK),
++               static_cast<unsigned int>(ANKI_STORE.getDeckCount()), tr(STR_ANKI_DECKS_LOADED));
++      message = buf;
++      // No Wi-Fi involved, so unlike a network pull this can stay in Anki in
++      // place -- the new deck list is visible immediately on dismiss.
++      restartOnDismiss = false;
++    }
++  } else {
++    state = State::ERROR;
++    message = detail;
++    restartOnDismiss = true;
++  }
 +  requestUpdate();
 +}
 +
@@ -40485,10 +40525,10 @@ index 0000000..6543ad0
 +}
 diff --git a/src/activities/anki/AnkiActivity.h b/src/activities/anki/AnkiActivity.h
 new file mode 100644
-index 0000000..e04e477
+index 0000000..21a0e4a
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.h
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,95 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -40502,7 +40542,7 @@ index 0000000..e04e477
 +
 +class AnkiActivity final : public Activity {
 + public:
-+  enum class MenuAction { LEARN, DECK, DOWNLOAD, UPLOAD, CONFIGURE };
++  enum class MenuAction { LEARN, DECK, DOWNLOAD, LOAD_SD, UPLOAD, CONFIGURE };
 +
 +  explicit AnkiActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
 +      : Activity("Anki", renderer, mappedInput) {}
@@ -40554,6 +40594,8 @@ index 0000000..e04e477
 +  void startNetworkAction(NetworkAction action);
 +  void onWifiSelectionComplete(bool success);
 +  void performNetworkAction();
++  // "Load today's cards from SD" -- installs Anki/cards.ndjson without Wi-Fi.
++  void performSdImport();
 +  // After NETWORK_ERROR: offer mDNS search vs "Anki is open / keep URL".
 +  void offerDiscoverAfterConnectFailure();
 +  void onDiscoverOfferResult(bool search);
@@ -41081,10 +41123,10 @@ index 0000000..41bf526
 +}  // namespace AnkiMdns
 diff --git a/src/anki/AnkiStore.cpp b/src/anki/AnkiStore.cpp
 new file mode 100644
-index 0000000..fffe83b
+index 0000000..2673032
 --- /dev/null
 +++ b/src/anki/AnkiStore.cpp
-@@ -0,0 +1,1146 @@
+@@ -0,0 +1,1203 @@
 +#include "AnkiStore.h"
 +
 +#include <ArduinoJson.h>
@@ -41563,6 +41605,63 @@ index 0000000..fffe83b
 +  }
 +  error.clear();
 +  return true;
++}
++
++// Same 2 MB ceiling AnkiSyncClient::pull() applies to a network response --
++// keeps a runaway or corrupt SD file from consuming the whole card partition.
++constexpr size_t kMaxSdImportBytes = 2 * 1024 * 1024;
++
++bool AnkiStore::installFromSdImport(std::string& error) {
++  if (!Storage.exists(SD_IMPORT_PATH)) {
++    error = "No Anki/cards.ndjson file on the SD card";
++    return false;
++  }
++
++  HalFile source;
++  if (!Storage.openFileForRead("ANKI", SD_IMPORT_PATH, source)) {
++    error = "Could not open Anki/cards.ndjson";
++    return false;
++  }
++
++  // Stage a copy under PULL_TEMP_PATH so installPulledBatch() can install it
++  // exactly as it would a network pull. Copying rather than renaming leaves the
++  // user's own file on the SD card untouched for re-import or editing.
++  Storage.remove(PULL_TEMP_PATH);
++  HalFile staged;
++  if (!Storage.openFileForWrite("ANKI", PULL_TEMP_PATH, staged)) {
++    error = "Could not stage the SD import";
++    return false;
++  }
++
++  uint8_t buffer[2048];
++  size_t total = 0;
++  bool copyFailed = false;
++  while (true) {
++    const int n = source.read(buffer, sizeof(buffer));
++    if (n < 0) {
++      copyFailed = true;
++      break;
++    }
++    if (n == 0) break;
++    total += static_cast<size_t>(n);
++    if (total > kMaxSdImportBytes || staged.write(buffer, static_cast<size_t>(n)) != static_cast<size_t>(n)) {
++      copyFailed = true;
++      break;
++    }
++  }
++  staged.flush();
++  staged.close();
++
++  if (copyFailed) {
++    Storage.remove(PULL_TEMP_PATH);
++    error = total > kMaxSdImportBytes ? "Anki/cards.ndjson is too large" : "Could not copy Anki/cards.ndjson";
++    return false;
++  }
++
++  // installPulledBatch() deletes PULL_TEMP_PATH on failure and renames it into
++  // place (CARDS_PATH/INDEX_PATH) on success -- our staged copy either way,
++  // never the SD_IMPORT_PATH original.
++  return installPulledBatch(error);
 +}
 +
 +bool AnkiStore::installPulledBatch(std::string& error) {
@@ -42233,10 +42332,10 @@ index 0000000..fffe83b
 +}
 diff --git a/src/anki/AnkiStore.h b/src/anki/AnkiStore.h
 new file mode 100644
-index 0000000..0ed5985
+index 0000000..d2386ed
 --- /dev/null
 +++ b/src/anki/AnkiStore.h
-@@ -0,0 +1,182 @@
+@@ -0,0 +1,193 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -42262,6 +42361,12 @@ index 0000000..0ed5985
 +class AnkiStore {
 + public:
 +  static constexpr const char* PULL_TEMP_PATH = "/.crosspoint/anki-pull.tmp";
++  // Fixed path for a hand-authored or scripted local import: drop an NDJSON file
++  // here (same wire format the Mac add-on pulls over HTTP -- see
++  // installFromSdImport()) and use "Load today's cards from SD" instead of a
++  // network pull. The file is left in place on both success and failure so it
++  // can be re-imported or fixed without re-copying it onto the card.
++  static constexpr const char* SD_IMPORT_PATH = "/Anki/cards.ndjson";
 +  static constexpr const char* FLAGS_PATH = "/.crosspoint/anki-flags.csv";
 +  static constexpr const char* PUSH_TEMP_PATH = "/.crosspoint/anki-push.json";
 +
@@ -42307,6 +42412,11 @@ index 0000000..0ed5985
 +  bool isLandscapeCards() const { return cardOrientation != 0; }
 +
 +  bool installPulledBatch(std::string& error);
++  // Stages a copy of SD_IMPORT_PATH under PULL_TEMP_PATH and installs it through
++  // the same path as a network pull. Returns false with a message in `error` when
++  // no import file exists, it is oversized, or its contents fail validation --
++  // installPulledBatch() applies the identical NDJSON checks either way.
++  bool installFromSdImport(std::string& error);
 +  bool loadCurrentCard(AnkiCard& card, std::string& error) const;
 +  bool recordReview(uint8_t ease, uint32_t durationMs, std::string& error);
 +  // Toggle Anki red flag (0 ↔ 1) on the current card; persists until push/clear.
