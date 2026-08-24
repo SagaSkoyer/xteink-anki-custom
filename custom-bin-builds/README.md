@@ -15,7 +15,13 @@ Upstream base: <https://github.com/crosspoint-reader/crosspoint-reader>
 
 - Tag: `1.6.0rc` (the 1.6.0 beta RC line)
 - Commit: `6a501bba544d9e80598811dbdf2134d1bcb1ebd2`
-- Reported firmware version: `1.6.0rc-anki-2.6.0`
+- Reported firmware version: `1.6.0rc-anki-2.7.0` (from the patch)
+
+> **The committed `.bin` is still the `anki-2.6.0` build.** The card-flip
+> performance work in `anki-2.7.0` landed in the patch only; the image here has
+> not been rebuilt yet, so it still reports `1.6.0rc-anki-2.6.0` in the Anki
+> header. Run `./custom-bin-builds/build.sh` to produce the 2.7.0 image (and
+> refresh `SHA256SUMS`) before flashing if you want that change.
 
 ## Device compatibility
 
@@ -125,8 +131,17 @@ All three Anki card sizes render CJK from that fallback:
   patch makes public for that caller. `getTextWidth` already resolved
   internally, so before the fix the layout reserved space for CJK glyphs the
   draw loop then dropped.
-- Card text is prewarmed in both regular and bold, so a card costs one batched
-  SD read per style instead of a file open per glyph on every repaint.
+- Glyph bitmaps are prewarmed in one batched SD read instead of a file open per
+  glyph, bounded to the text that fits on screen (a card has no paging, so
+  prewarming a long back's invisible tail only spent the resident arena's glyph
+  budget), and bold is warmed only when the visible text actually uses it.
+- Layout measurement does not read bitmaps at all: `loadCurrentCard` primes the
+  SD family's persistent advance-only table (`SdCardFont::buildAdvanceTable`,
+  ~8 bytes per codepoint, no `MAX_PAGE_GLYPHS` cap, survives `clearCache()`) and
+  the card renderer measures through `GfxRenderer::getTextAdvanceX`. Before
+  this, every width query walked `getTextBounds` → `getGlyph`, so any glyph the
+  arena was missing cost a `.cpfont` open in `SdCardFont::onGlyphMiss` — with an
+  8-entry overflow ring, a CJK back thrashed it on every flip.
 
 Setting **Anki → Anki settings → Card font → Reader / SD font** still works and
 points cards straight at the SD family, bypassing the UI-font fallback entirely.

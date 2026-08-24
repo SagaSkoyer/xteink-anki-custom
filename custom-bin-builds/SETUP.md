@@ -26,7 +26,9 @@ CrossPoint, copy the `.bin` to the SD card and use **Settings → System →
 Firmware from SD**. Keep power and the SD card connected during the update.
 
 To confirm the flash worked, open **Anki** from the home menu — the header shows
-`1.6.0rc-anki-2.6.0`.
+`1.6.0rc-anki-2.6.0` for the committed image. (The patch in this repo is already
+at `anki-2.7.0`; rebuild with `./custom-bin-builds/build.sh` to get that image,
+and the header will read `1.6.0rc-anki-2.7.0`.)
 
 **To go back to stock,** flash an official release from the same page.
 
