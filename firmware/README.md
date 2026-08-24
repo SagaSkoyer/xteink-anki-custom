@@ -22,19 +22,29 @@ Der Patch ergänzt:
 - **Max. Karten pro Stapel** und **gesamt** in Geräte- und Web-Einstellungen
   (werden beim Pull an das Add-on gesendet),
 - Schriftgröße (Klein/Mittel/Groß), Ausrichtung (Hochkant/Quer), Händigkeit,
-- Blättern über die Seitentasten (Page Up/Down),
-- **Flag:** X4-Seitentasten teilen sich **einen** ADC → Hoch+Runter gleichzeitig
-  geht hardwareseitig **nicht**. Stattdessen:
-  - **Bestätigen + Hoch/Runter** (Chord über zwei ADCs), oder
-  - **Hoch oder Runter ~0,55 s halten** (Kurzdruck blättert beim Loslassen)
-  → Rotflag 0↔1; Icon rechts der Progress-Bar; Sync Pull/Push,
-- **Progress:** zählt nur abgeschlossene Karten (Gut/Einfach bzw. Hard ohne
-  Requeue); **Nochmal** und **Schwer** auf Lernkarten füllen den Balken nicht,
+- **Tastenbelegung im Lernmodus** (unten links nach rechts = Zurück, Bestätigen,
+  Links, Rechts; oben = Seitentasten Hoch/Runter):
+  - **Oben (Hoch/Runter):** auf der Frage beide **Umdrehen**; auf der Antwort
+    Hoch = **Nochmal**, Runter = **Gut**,
+  - **Unten 1 (Zurück):** Karte verlassen, zurück ins Stapelmenü — auf Frage
+    und Antwort,
+  - **Unten 2 (Bestätigen):** **Rückgängig** — letzte Bewertung zurücknehmen
+    und zur vorherigen Karte (Frage) zurückkehren,
+  - **Unten 3 (Links) kurz:** **Flag** umschalten; **lang halten (~0,55 s):**
+    **Zurückstellen** (Bury) — Karte nur lokal für heute überspringen, ohne
+    Bewertung; rein lokal und wird beim nächsten Pull verworfen,
+  - **Unten 4 (Rechts):** in langen Karten nach unten **blättern**,
+- **Flag:** Rotflag 0↔1 über Unten 3 (kurz); Icon rechts der Progress-Bar;
+  Sync Pull/Push,
+- **Progress:** zählt nur abgeschlossene Karten (Gut ohne Requeue); **Nochmal**
+  füllt den Balken nicht; zurückgestellte (Bury) Karten zählen ebenfalls nicht,
 - **Version:** Anki-Menü + Anki-Einstellungen zeigen Firmware-Version im Header
   (Release: `1.4.1-anki-2.5.7`; auch Boot/System-Einstellungen),
 - Platzhalter bei leeren Kartenseiten; Mac-Add-on mit Feld-Fallback,
-- Bewertungen `Nochmal`, `Schwer`, `Gut` und `Einfach`,
-- erneute lokale Einplanung von Lernkarten nach `Nochmal`/`Schwer`,
+- Bewertungen am Gerät: `Nochmal` und `Gut` (Tasten oben); `Schwer`/`Einfach`
+  entfallen mit der neuen Tastenbelegung,
+- erneute lokale Einplanung von Lernkarten nach `Nochmal`,
+- **Rückgängig:** letzte Bewertung einstufig zurücknehmen (Unten 2),
 - fehlertoleranten Upload mit Batch-ID (JSON: Reviews + Flags) sowie
 - Eingabe von Mac-Serveradresse und API-Token am X4 oder im CrossPoint-Webzugang.
 
