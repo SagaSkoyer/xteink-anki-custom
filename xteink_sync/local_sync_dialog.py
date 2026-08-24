@@ -54,8 +54,8 @@ class LocalSyncDialog(QDialog):
         layout = QVBoxLayout(self)
         tabs = QTabWidget(self)
         layout.addWidget(tabs)
-        tabs.addTab(self._build_export_tab(), self._t("local_sync_export_tab"))
         tabs.addTab(self._build_import_tab(), self._t("local_sync_import_tab"))
+        tabs.addTab(self._build_export_tab(), self._t("local_sync_export_tab"))
 
     # -- Export tab ---------------------------------------------------
 
