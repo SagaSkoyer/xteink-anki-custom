@@ -78,10 +78,49 @@ glyphs before copying the image here.
   medium size) and deliberately skip the Arabic presentation forms — UI_18 is
   never used for menus, and those forms cost roughly 700 KB of flash the app
   partition cannot spare.
-- **Flash headroom is tight:** the image uses 98.1% of the 6,553,600-byte app
-  partition (about 122 KB free). It flashes and OTA-updates fine, but further
-  additions to this build will need font or feature trimming.
-- Build footprint: RAM 16.8% (55,164 B static), Flash 98.1% (6,431,569 B).
+- Build footprint: RAM 16.8% (54,996 B static), Flash 78.5% (5,144,563 B of the
+  6,553,600-byte app partition — about 1.34 MB free).
+
+## Deliberate removals
+
+Two pieces of upstream content are left out to keep the app partition roomy;
+both are reader-side features, and neither affects the Anki functionality.
+
+- **NotoSerif reader family (all 16 faces, ~1.05 MB).** NotoSans is the only
+  built-in reader family; the serif option is gone from the on-device font
+  picker and the web settings. The `FONT_FAMILY` enum lost its `NOTOSERIF`
+  member, so `BUILTIN_FONT_COUNT` and every SD-font index derived from it stay
+  consistent, and a settings file that still names the serif family is clamped
+  to NotoSans on load. SD-card font families are unaffected and are still
+  offered after the built-in one.
+- **German hyphenation trie (~206 KB).** By far the largest of the ten tries.
+  German text still renders and wraps, it just is not hyphenated, so
+  justified German columns have looser spacing. The other nine languages
+  (en, fr, ru, es, it, pl, sv, uk, fi) are untouched.
+
+To restore either one, revert its hunks in
+`patches/crosspoint-1.6.0rc-anki.patch` and rebuild; the image returns to about
+98% of the partition with both back in.
+
+## Chinese and other CJK
+
+CJK is **not** built into the firmware — CrossPoint 1.6 serves it from an
+SD-card font family, which `SdCardFontSystem` registers as a size-matched
+fallback for the built-in UI fonts. Upload a CJK family under **Fonts** in the
+web UI.
+
+Two gaps apply to Anki cards specifically in this build:
+
+- The fallback table (`kUiFontSizes` in `src/SdCardFontSystem.cpp`) covers the
+  8/10/12 pt UI fonts but not UI_18, so the **Medium** card size has no CJK
+  fallback.
+- The **Large** card size block-upscales UI_12 through the Anki activity's own
+  glyph loop, which reads the font family directly and never consults the
+  fallback map.
+
+Until those are addressed, set **Anki → Anki settings → Card font → Reader / SD
+font**. That points cards straight at the SD family at every size, so CJK
+renders on Small, Medium, and Large alike.
 - Verified by rebuilding from a fresh clone with only the committed patch: same
   size and same flash figure, differing in 101 bytes of the ESP app descriptor
   (project name, build timestamp, and the trailing image digest), so the

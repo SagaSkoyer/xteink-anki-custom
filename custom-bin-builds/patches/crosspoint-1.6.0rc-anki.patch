@@ -40,10 +40,32 @@ index 7a23093..8d21749 100644
  
  ### `GET /api/fonts`
 diff --git a/lib/EpdFont/builtinFonts/all.h b/lib/EpdFont/builtinFonts/all.h
-index c4063c0..4d7364c 100644
+index c4063c0..af58729 100644
 --- a/lib/EpdFont/builtinFonts/all.h
 +++ b/lib/EpdFont/builtinFonts/all.h
-@@ -37,3 +37,5 @@
+@@ -1,21 +1,5 @@
+ #pragma once
+ 
+-#include <builtinFonts/notoserif_12_bold.h>
+-#include <builtinFonts/notoserif_12_bolditalic.h>
+-#include <builtinFonts/notoserif_12_italic.h>
+-#include <builtinFonts/notoserif_12_regular.h>
+-#include <builtinFonts/notoserif_14_bold.h>
+-#include <builtinFonts/notoserif_14_bolditalic.h>
+-#include <builtinFonts/notoserif_14_italic.h>
+-#include <builtinFonts/notoserif_14_regular.h>
+-#include <builtinFonts/notoserif_16_bold.h>
+-#include <builtinFonts/notoserif_16_bolditalic.h>
+-#include <builtinFonts/notoserif_16_italic.h>
+-#include <builtinFonts/notoserif_16_regular.h>
+-#include <builtinFonts/notoserif_18_bold.h>
+-#include <builtinFonts/notoserif_18_bolditalic.h>
+-#include <builtinFonts/notoserif_18_italic.h>
+-#include <builtinFonts/notoserif_18_regular.h>
+ #include <builtinFonts/notosans_8_regular.h>
+ #include <builtinFonts/notosans_12_bold.h>
+ #include <builtinFonts/notosans_12_bolditalic.h>
+@@ -37,3 +21,5 @@
  #include <builtinFonts/ubuntu_10_regular.h>
  #include <builtinFonts/ubuntu_12_bold.h>
  #include <builtinFonts/ubuntu_12_regular.h>
@@ -37977,6 +37999,43 @@ index 9cd62f1..c2b5a14 100755
      echo "Generated $output_path"
    done
  done
+diff --git a/lib/Epub/Epub/hyphenation/LanguageRegistry.cpp b/lib/Epub/Epub/hyphenation/LanguageRegistry.cpp
+index 2b0b1d7..de857a6 100644
+--- a/lib/Epub/Epub/hyphenation/LanguageRegistry.cpp
++++ b/lib/Epub/Epub/hyphenation/LanguageRegistry.cpp
+@@ -4,7 +4,6 @@
+ #include <array>
+ 
+ #include "HyphenationCommon.h"
+-#include "generated/hyph-de.trie.h"
+ #include "generated/hyph-en.trie.h"
+ #include "generated/hyph-es.trie.h"
+ #include "generated/hyph-fi.trie.h"
+@@ -20,7 +19,6 @@ namespace {
+ // English hyphenation patterns (3/3 minimum prefix/suffix length)
+ LanguageHyphenator englishHyphenator(en_patterns, isLatinLetter, toLowerLatin, 3, 3);
+ LanguageHyphenator frenchHyphenator(fr_patterns, isLatinLetter, toLowerLatin);
+-LanguageHyphenator germanHyphenator(de_patterns, isLatinLetter, toLowerLatin);
+ LanguageHyphenator russianHyphenator(ru_patterns, isCyrillicLetter, toLowerCyrillic);
+ LanguageHyphenator spanishHyphenator(es_patterns, isLatinLetter, toLowerLatin);
+ LanguageHyphenator italianHyphenator(it_patterns, isLatinLetter, toLowerLatin);
+@@ -29,12 +27,14 @@ LanguageHyphenator ukrainianHyphenator(uk_patterns, isCyrillicLetter, toLowerCyr
+ LanguageHyphenator polishHyphenator(pl_patterns, isLatinLetter, toLowerLatin);
+ LanguageHyphenator finnishHyphenator(fi_patterns, isLatinLetter, toLowerLatin);
+ 
+-using EntryArray = std::array<LanguageEntry, 10>;
++// The German patterns (~206 KB of flash, by far the largest trie) are left out
++// of this build to make room in the app partition; German text still renders,
++// it just is not hyphenated.
++using EntryArray = std::array<LanguageEntry, 9>;
+ 
+ const EntryArray& entries() {
+   static const EntryArray kEntries = {{{"english", "en", &englishHyphenator},
+                                        {"french", "fr", &frenchHyphenator},
+-                                       {"german", "de", &germanHyphenator},
+                                        {"russian", "ru", &russianHyphenator},
+                                        {"spanish", "es", &spanishHyphenator},
+                                        {"italian", "it", &italianHyphenator},
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
 index 1c2f887..3cd7ded 100644
 --- a/lib/I18n/translations/english.yaml
@@ -38135,6 +38194,139 @@ index e07c59d..4423390 100644
    -DENABLE_SERIAL_LOG
    -DLOG_LEVEL=1 ; Set log level to info for release builds
  
+diff --git a/src/CrossPointSettings.cpp b/src/CrossPointSettings.cpp
+index c1965a8..d44e4ab 100644
+--- a/src/CrossPointSettings.cpp
++++ b/src/CrossPointSettings.cpp
+@@ -206,7 +206,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
+   strncpy(sdFontFamilyName, sfn, sizeof(sdFontFamilyName) - 1);
+   sdFontFamilyName[sizeof(sdFontFamilyName) - 1] = '\0';
+   if (storedFontFamily == LEGACY_OPENDYSLEXIC && sdFontFamilyName[0] == '\0') {
+-    fontFamily = NOTOSERIF;
++    fontFamily = NOTOSANS;
+     strncpy(sdFontFamilyName, "OpenDyslexic", sizeof(sdFontFamilyName) - 1);
+     sdFontFamilyName[sizeof(sdFontFamilyName) - 1] = '\0';
+     needsResave = true;
+@@ -280,32 +280,18 @@ float CrossPointSettings::getReaderLineCompression() const {
+     }
+   }
+ 
+-  switch (fontFamily) {
+-    case NOTOSERIF:
++  // NotoSans is the only built-in family in this build (NotoSerif was dropped
++  // for flash), so its line-spacing factors apply unconditionally.
++  switch (lineSpacing) {
++    case TIGHT:
++      return 0.90f;
++    case NORMAL:
+     default:
+-      switch (lineSpacing) {
+-        case TIGHT:
+-          return 0.95f;
+-        case NORMAL:
+-        default:
+-          return 1.0f;
+-        case WIDE:
+-          return 1.1f;
+-        case EXTRA_WIDE:
+-          return 1.2f;
+-      }
+-    case NOTOSANS:
+-      switch (lineSpacing) {
+-        case TIGHT:
+-          return 0.90f;
+-        case NORMAL:
+-        default:
+-          return 0.95f;
+-        case WIDE:
+-          return 1.0f;
+-        case EXTRA_WIDE:
+-          return 1.05f;
+-      }
++      return 0.95f;
++    case WIDE:
++      return 1.0f;
++    case EXTRA_WIDE:
++      return 1.05f;
+   }
+ }
+ 
+@@ -353,16 +339,15 @@ int CrossPointSettings::getReaderFontId() const {
+   // in the page render loop) so rendering is correct even before it has run.
+   const uint8_t pt =
+       snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES), fontPointSize);
+-  const bool sans = (fontFamily == NOTOSANS);
+   switch (pt) {
+     case 12:
+-      return sans ? NOTOSANS_12_FONT_ID : NOTOSERIF_12_FONT_ID;
++      return NOTOSANS_12_FONT_ID;
+     case 16:
+-      return sans ? NOTOSANS_16_FONT_ID : NOTOSERIF_16_FONT_ID;
++      return NOTOSANS_16_FONT_ID;
+     case 18:
+-      return sans ? NOTOSANS_18_FONT_ID : NOTOSERIF_18_FONT_ID;
++      return NOTOSANS_18_FONT_ID;
+     case 14:
+     default:
+-      return sans ? NOTOSANS_14_FONT_ID : NOTOSERIF_14_FONT_ID;
++      return NOTOSANS_14_FONT_ID;
+   }
+ }
+diff --git a/src/CrossPointSettings.h b/src/CrossPointSettings.h
+index 21ceeae..f692838 100644
+--- a/src/CrossPointSettings.h
++++ b/src/CrossPointSettings.h
+@@ -91,7 +91,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
+   enum SIDE_BUTTON_LAYOUT { PREV_NEXT = 0, NEXT_PREV = 1, SIDE_BUTTONS_DISABLED = 2, SIDE_BUTTON_LAYOUT_COUNT };
+ 
+   // Font family options (built-in fonts only; SD card fonts use sdFontFamilyName)
+-  enum FONT_FAMILY { NOTOSERIF = 0, NOTOSANS = 1, FONT_FAMILY_COUNT };
++  // NotoSerif (16 faces, ~1.05 MB of flash) is left out of this build to make
++// room in the app partition; NotoSans is the only built-in reader family.
++// SD-card families are unaffected and are still offered after this one.
++enum FONT_FAMILY { NOTOSANS = 0, FONT_FAMILY_COUNT };
+   static constexpr uint8_t LEGACY_OPENDYSLEXIC = 2;
+   static constexpr uint8_t BUILTIN_FONT_COUNT = FONT_FAMILY_COUNT;
+   // Reader font size is a point size, not an enum slot — see fontPointSize.
+@@ -233,7 +236,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
+   uint8_t frontButtonLeft = FRONT_HW_LEFT;
+   uint8_t frontButtonRight = FRONT_HW_RIGHT;
+   // Reader font settings
+-  uint8_t fontFamily = NOTOSERIF;
++  uint8_t fontFamily = NOTOSANS;
+   // Point size of the reader font. Only sizes the active family actually ships
+   // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
+   // available size (and persists the snap) whenever the family changes.
+diff --git a/src/SettingsList.h b/src/SettingsList.h
+index f4f1a14..676805d 100644
+--- a/src/SettingsList.h
++++ b/src/SettingsList.h
+@@ -22,7 +22,7 @@
+ // are appended after the built-in fonts. Otherwise only built-in fonts are listed.
+ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
+   // Built-in font labels (StrId)
+-  std::vector<StrId> enumValues = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS};
++  std::vector<StrId> enumValues = {StrId::STR_NOTO_SANS};
+   // Runtime string labels for SD card fonts
+   std::vector<std::string> enumStringValues;
+ 
+@@ -43,7 +43,6 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
+   // with all options when SD fonts are present.
+   std::vector<std::string> allStringValues;
+   if (sdFontCount > 0) {
+-    allStringValues.push_back(I18N.get(StrId::STR_NOTO_SERIF));
+     allStringValues.push_back(I18N.get(StrId::STR_NOTO_SANS));
+     allStringValues.insert(allStringValues.end(), enumStringValues.begin(), enumStringValues.end());
+   }
+@@ -249,7 +248,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
+         // Built-in font-family entry. Replaced per-call with a registry-aware
+         // version when SD fonts are installed.
+         SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily,
+-                          {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS}, "fontFamily", StrId::STR_CAT_READER)
++                          {StrId::STR_NOTO_SANS}, "fontFamily", StrId::STR_CAT_READER)
+             .withTextSettings(),
+         // Placeholder: the selectable sizes depend on the active font family, so
+         // this entry is always replaced by buildFontSizeSetting() below. It only
 diff --git a/src/SilentRestart.h b/src/SilentRestart.h
 index f94345c..5347acf 100644
 --- a/src/SilentRestart.h
@@ -40708,6 +40900,18 @@ index 1b565b0..78d44f7 100644
  
    int getMenuItemCount() const;
    bool storeCoverBuffer();    // Store frame buffer for cover image
+diff --git a/src/activities/settings/TextSettingsActivity.cpp b/src/activities/settings/TextSettingsActivity.cpp
+index ab0a6c5..9ce8483 100644
+--- a/src/activities/settings/TextSettingsActivity.cpp
++++ b/src/activities/settings/TextSettingsActivity.cpp
+@@ -67,7 +67,6 @@ void TextSettingsActivity::onEnter() {
+ 
+   fonts_.clear();
+   fonts_.reserve(CrossPointSettings::BUILTIN_FONT_COUNT + (registry_ ? registry_->getFamilyCount() : 0));
+-  fonts_.push_back({I18N.get(StrId::STR_NOTO_SERIF), true, static_cast<uint8_t>(CrossPointSettings::NOTOSERIF)});
+   fonts_.push_back({I18N.get(StrId::STR_NOTO_SANS), true, static_cast<uint8_t>(CrossPointSettings::NOTOSANS)});
+   if (registry_) {
+     const auto& families = registry_->getFamilies();
 diff --git a/src/anki/AnkiFirmwareVersion.h b/src/anki/AnkiFirmwareVersion.h
 new file mode 100644
 index 0000000..7176f25
@@ -42583,10 +42787,65 @@ index 0365165..c59159d 100644
 +static_assert(UI_18_FONT_ID != 0, "Font ID collision with sentinel");
  static_assert(SMALL_FONT_ID != 0, "Font ID collision with sentinel");
 diff --git a/src/main.cpp b/src/main.cpp
-index 517ebd6..3ae1ec9 100644
+index 517ebd6..564f974 100644
 --- a/src/main.cpp
 +++ b/src/main.cpp
-@@ -125,6 +125,11 @@ EpdFont ui12RegularFont(&ubuntu_12_regular);
+@@ -61,44 +61,23 @@ constexpr unsigned long DEFAULT_RECOVERY_SETTLE_MS = 500;
+ static bool wakePowerReleasePending = false;
+ 
+ // Fonts
+-EpdFont notoserif14RegularFont(&notoserif_14_regular);
+-EpdFont notoserif14BoldFont(&notoserif_14_bold);
+-EpdFont notoserif14ItalicFont(&notoserif_14_italic);
+-EpdFont notoserif14BoldItalicFont(&notoserif_14_bolditalic);
+-EpdFontFamily notoserif14FontFamily(&notoserif14RegularFont, &notoserif14BoldFont, &notoserif14ItalicFont,
+-                                    &notoserif14BoldItalicFont);
+-#ifndef OMIT_FONTS
+-EpdFont notoserif12RegularFont(&notoserif_12_regular);
+-EpdFont notoserif12BoldFont(&notoserif_12_bold);
+-EpdFont notoserif12ItalicFont(&notoserif_12_italic);
+-EpdFont notoserif12BoldItalicFont(&notoserif_12_bolditalic);
+-EpdFontFamily notoserif12FontFamily(&notoserif12RegularFont, &notoserif12BoldFont, &notoserif12ItalicFont,
+-                                    &notoserif12BoldItalicFont);
+-EpdFont notoserif16RegularFont(&notoserif_16_regular);
+-EpdFont notoserif16BoldFont(&notoserif_16_bold);
+-EpdFont notoserif16ItalicFont(&notoserif_16_italic);
+-EpdFont notoserif16BoldItalicFont(&notoserif_16_bolditalic);
+-EpdFontFamily notoserif16FontFamily(&notoserif16RegularFont, &notoserif16BoldFont, &notoserif16ItalicFont,
+-                                    &notoserif16BoldItalicFont);
+-EpdFont notoserif18RegularFont(&notoserif_18_regular);
+-EpdFont notoserif18BoldFont(&notoserif_18_bold);
+-EpdFont notoserif18ItalicFont(&notoserif_18_italic);
+-EpdFont notoserif18BoldItalicFont(&notoserif_18_bolditalic);
+-EpdFontFamily notoserif18FontFamily(&notoserif18RegularFont, &notoserif18BoldFont, &notoserif18ItalicFont,
+-                                    &notoserif18BoldItalicFont);
+ 
+-EpdFont notosans12RegularFont(&notosans_12_regular);
+-EpdFont notosans12BoldFont(&notosans_12_bold);
+-EpdFont notosans12ItalicFont(&notosans_12_italic);
+-EpdFont notosans12BoldItalicFont(&notosans_12_bolditalic);
+-EpdFontFamily notosans12FontFamily(&notosans12RegularFont, &notosans12BoldFont, &notosans12ItalicFont,
+-                                   &notosans12BoldItalicFont);
++// NotoSans is the only built-in reader family in this build. Its 14 pt faces
++// stay outside OMIT_FONTS -- the slot NotoSerif 14 held upstream -- so a
++// fonts-omitted build still has one complete family.
+ EpdFont notosans14RegularFont(&notosans_14_regular);
+ EpdFont notosans14BoldFont(&notosans_14_bold);
+ EpdFont notosans14ItalicFont(&notosans_14_italic);
+ EpdFont notosans14BoldItalicFont(&notosans_14_bolditalic);
+ EpdFontFamily notosans14FontFamily(&notosans14RegularFont, &notosans14BoldFont, &notosans14ItalicFont,
+                                    &notosans14BoldItalicFont);
++#ifndef OMIT_FONTS
++EpdFont notosans12RegularFont(&notosans_12_regular);
++EpdFont notosans12BoldFont(&notosans_12_bold);
++EpdFont notosans12ItalicFont(&notosans_12_italic);
++EpdFont notosans12BoldItalicFont(&notosans_12_bolditalic);
++EpdFontFamily notosans12FontFamily(&notosans12RegularFont, &notosans12BoldFont, &notosans12ItalicFont,
++                                   &notosans12BoldItalicFont);
+ EpdFont notosans16RegularFont(&notosans_16_regular);
+ EpdFont notosans16BoldFont(&notosans_16_bold);
+ EpdFont notosans16ItalicFont(&notosans_16_italic);
+@@ -125,6 +104,11 @@ EpdFont ui12RegularFont(&ubuntu_12_regular);
  EpdFont ui12BoldFont(&ubuntu_12_bold);
  EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
  
@@ -42598,7 +42857,7 @@ index 517ebd6..3ae1ec9 100644
  // measurement of power button press duration calibration value
  unsigned long t1 = 0;
  unsigned long t2 = 0;
-@@ -135,6 +140,7 @@ RTC_NOINIT_ATTR uint32_t silentRebootTarget;
+@@ -135,6 +119,7 @@ RTC_NOINIT_ATTR uint32_t silentRebootTarget;
  constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
  constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
  constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
@@ -42606,7 +42865,7 @@ index 517ebd6..3ae1ec9 100644
  
  // How the device is coming back to life, resolved once at boot. Both resume
  // flows suppress the splash and leave the panel holding its pre-boot frame; a
-@@ -199,6 +205,19 @@ void silentRestartToReader() {
+@@ -199,6 +184,19 @@ void silentRestartToReader() {
    ESP.restart();
  }
  
@@ -42626,7 +42885,21 @@ index 517ebd6..3ae1ec9 100644
  bool handleX4ProFrontlightDoubleClick() {
    if (!BoardConfig::isX4Pro() || !gpio.wasReleased(HalGPIO::BTN_POWER)) {
      return false;
-@@ -326,6 +345,7 @@ void setupDisplayAndFonts(bool seamless = false) {
+@@ -313,19 +311,15 @@ void setupDisplayAndFonts(bool seamless = false) {
+   }
+   fontCacheManager.setFontDecompressor(&fontDecompressor);
+   renderer.setFontCacheManager(&fontCacheManager);
+-  renderer.insertFont(NOTOSERIF_14_FONT_ID, notoserif14FontFamily);
++  renderer.insertFont(NOTOSANS_14_FONT_ID, notosans14FontFamily);
+ #ifndef OMIT_FONTS
+-  renderer.insertFont(NOTOSERIF_12_FONT_ID, notoserif12FontFamily);
+-  renderer.insertFont(NOTOSERIF_16_FONT_ID, notoserif16FontFamily);
+-  renderer.insertFont(NOTOSERIF_18_FONT_ID, notoserif18FontFamily);
+-
+   renderer.insertFont(NOTOSANS_12_FONT_ID, notosans12FontFamily);
+-  renderer.insertFont(NOTOSANS_14_FONT_ID, notosans14FontFamily);
+   renderer.insertFont(NOTOSANS_16_FONT_ID, notosans16FontFamily);
+   renderer.insertFont(NOTOSANS_18_FONT_ID, notosans18FontFamily);
  #endif  // OMIT_FONTS
    renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
    renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
@@ -42634,7 +42907,7 @@ index 517ebd6..3ae1ec9 100644
    renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
  
    // Discover and load SD card fonts
-@@ -361,7 +381,7 @@ void setup() {
+@@ -361,7 +355,7 @@ void setup() {
    // Bound the target range too — RTC_NOINIT memory is uninitialized on cold boot.
    const bool isSilentReboot = (silentRebootMagic == SILENT_REBOOT_MAGIC);
    const uint32_t snapshotTarget =
@@ -42643,7 +42916,7 @@ index 517ebd6..3ae1ec9 100644
    silentRebootMagic = 0;
    silentRebootTarget = 0;
  
-@@ -514,6 +534,9 @@ void setup() {
+@@ -514,6 +508,9 @@ void setup() {
    } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_READER &&
               !APP_STATE.openEpubPath.empty()) {
      activityManager.goToReader(APP_STATE.openEpubPath);
