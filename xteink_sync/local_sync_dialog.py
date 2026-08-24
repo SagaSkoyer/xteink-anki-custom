@@ -5,8 +5,8 @@ today's cards from SD" to pick up (AnkiStore::findNewestSdDueFile() in
 AnkiStore.cpp). Import applies every <parent>/system-answers/*.ndjson file
 the device wrote while you graded (AnkiStore::appendAnswerEvent()) back into
 the real Anki collection. Both directions read/write the SD card's own
-folders directly -- "parent folder" is meant to be wherever your computer
-mounts the card, not a staging copy.
+folders directly -- the folder you pick is wherever your computer mounts
+the card itself, not a staging copy.
 
 The actual card-collection/grading logic lives in XteinkAddon.export_due_to_
 folder() / import_answers_from_folder() (__init__.py); this module is only
