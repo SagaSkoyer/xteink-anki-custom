@@ -82,3 +82,8 @@ glyphs before copying the image here.
   partition (about 122 KB free). It flashes and OTA-updates fine, but further
   additions to this build will need font or feature trimming.
 - Build footprint: RAM 16.8% (55,164 B static), Flash 98.1% (6,431,569 B).
+- Verified by rebuilding from a fresh clone with only the committed patch: same
+  size and same flash figure, differing in 101 bytes of the ESP app descriptor
+  (project name, build timestamp, and the trailing image digest), so the
+  checksum in `SHA256SUMS` is the one for the committed image rather than a
+  reproducible-build fingerprint.
