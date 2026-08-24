@@ -47,6 +47,13 @@ Use this for offline flashcards, quizzes, or notes you don't need graded in
 Anki — not as a substitute for pairing when you actually want spaced
 repetition against your real Anki deck.
 
+**Want real Anki cards on the SD card instead, with grading that syncs back?**
+Use the add-on's own **eInk Reviews - Export to SD** (gear icon on any deck in
+Anki's deck list) instead of this CSV workflow — see
+`../anki-addon/README.md`. It writes real due cards straight from your
+collection, so unlike the synthetic cards here, reviewing and later pushing
+through a normal Wi-Fi sync grades the actual Anki cards.
+
 ## File format
 
 `output/cards.ndjson` is one JSON object per line: a `meta` header, one `card`

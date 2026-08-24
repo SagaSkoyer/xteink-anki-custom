@@ -5,6 +5,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import re
 import secrets
 import socket
 import threading
@@ -28,7 +29,7 @@ from anki.consts import (
 from anki.scheduler.v3 import CardAnswer
 from aqt import gui_hooks, mw
 from aqt.operations import CollectionOp, QueryOp
-from aqt.qt import QAction, QTimer, qconnect
+from aqt.qt import QAction, QFileDialog, QTimer, qconnect
 from aqt.utils import showInfo
 
 from .protocol import (
@@ -85,6 +86,11 @@ TRANSLATIONS = {
         "status_stopped": "The Xteink API could not be started:\n{error}",
         "yes": "yes",
         "no": "no",
+        "export_sd_menu": "eInk Reviews - Export to SD",
+        "export_sd_dialog_title": "Export eInk Reviews",
+        "export_sd_saved": "Saved {count} card(s) across {decks} deck(s) to:\n{path}",
+        "export_sd_empty": "No due cards to export in \"{deck}\".",
+        "export_sd_error": "Could not export cards:\n{error}",
     },
     "de": {
         "menu_action": "Xteink Status",
@@ -99,6 +105,11 @@ TRANSLATIONS = {
         "status_stopped": "Die Xteink API konnte nicht gestartet werden:\n{error}",
         "yes": "ja",
         "no": "nein",
+        "export_sd_menu": "eInk-Karteikarten - Auf SD exportieren",
+        "export_sd_dialog_title": "eInk-Karteikarten exportieren",
+        "export_sd_saved": "{count} Karte(n) in {decks} Stapel(n) gespeichert unter:\n{path}",
+        "export_sd_empty": "Keine fälligen Karten in \"{deck}\" zum Exportieren.",
+        "export_sd_error": "Karten konnten nicht exportiert werden:\n{error}",
     },
     "el": {
         "menu_action": "Κατάσταση Xteink",
@@ -113,6 +124,11 @@ TRANSLATIONS = {
         "status_stopped": "Δεν ήταν δυνατή η εκκίνηση του Xteink API:\n{error}",
         "yes": "ναι",
         "no": "όχι",
+        "export_sd_menu": "eInk κάρτες - Εξαγωγή σε SD",
+        "export_sd_dialog_title": "Εξαγωγή καρτών eInk",
+        "export_sd_saved": "Αποθηκεύτηκαν {count} κάρτ(ες) σε {decks} τράπουλα/ες στο:\n{path}",
+        "export_sd_empty": "Δεν υπάρχουν κάρτες προς εξαγωγή στο \"{deck}\".",
+        "export_sd_error": "Δεν ήταν δυνατή η εξαγωγή καρτών:\n{error}",
     },
 }
 
@@ -173,6 +189,30 @@ def _deck_display_name(full_name: str) -> str:
     if len(name) > 60:
         name = "…" + name[-59:]
     return name
+
+
+def _deck_and_descendant_ids(collection: Any, root_deck_id: int) -> "set[int]":
+    """All deck ids in root_deck_id's subtree (inclusive).
+
+    Anki decks nest by name ("Parent::Child"), so this walks
+    all_names_and_ids() by name prefix rather than a version-specific
+    children-lookup API -- stable across the Anki versions this add-on
+    supports.
+    """
+    try:
+        root_name = collection.decks.name(root_deck_id)
+    except Exception:
+        return {root_deck_id}
+
+    ids = {root_deck_id}
+    prefix = root_name + "::"
+    try:
+        for entry in collection.decks.all_names_and_ids():
+            if entry.name == root_name or entry.name.startswith(prefix):
+                ids.add(int(entry.id))
+    except Exception:
+        LOGGER.exception("Could not enumerate Anki decks for eInk export scoping")
+    return ids
 
 
 def _clamp_int(value: int, minimum: int, maximum: int) -> int:
@@ -674,6 +714,60 @@ class XteinkAddon:
             "max_total_cards": limits[1],
         }
 
+    def export_deck_to_file(
+        self,
+        deck_id: int,
+        file_path: str,
+        max_cards_per_deck: Optional[int] = None,
+        max_total_cards: Optional[int] = None,
+    ) -> Dict[str, int]:
+        """Write one deck's (+ its subdecks') due cards to file_path, in the
+        same NDJSON wire format a device pull receives over HTTP.
+
+        Reuses _collect_due_cards() unchanged -- the identical card-collection
+        logic pull_cards() runs for a network pull -- then narrows the result
+        to the requested deck's subtree before encoding, all inside the same
+        QueryOp so the deck-id lookup stays on Anki's collection-op thread.
+        Must be called off the Qt main thread: like pull_cards(), it blocks
+        on a Future that a main-thread-scheduled QueryOp resolves, which
+        would deadlock if the caller were already on the main thread.
+        """
+        limits = self._resolve_pull_limits(max_cards_per_deck, max_total_cards)
+        result = Future()
+
+        def start_query() -> None:
+            if not self.collection_ready():
+                result.set_exception(
+                    CollectionUnavailable("No Anki collection is currently open")
+                )
+                return
+
+            def op(col: Any) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+                cards, decks = self._collect_due_cards(col, limits)
+                wanted_ids = _deck_and_descendant_ids(col, deck_id)
+                cards = [c for c in cards if int(c["deck_id"]) in wanted_ids]
+                decks = [d for d in decks if int(d["id"]) in wanted_ids]
+                return cards, decks
+
+            operation = QueryOp(parent=mw, op=op, success=result.set_result)
+            operation.failure(result.set_exception).run_in_background()
+
+        mw.taskman.run_on_main(start_query)
+        cards, decks = self._wait_for_future(result)
+
+        payload = {
+            "status": "success",
+            "protocol_version": PROTOCOL_VERSION,
+            "pull_id": uuid.uuid4().hex,
+            "server_time": int(time.time()),
+            "decks": decks,
+            "cards": cards,
+        }
+        data = encode_pull_ndjson(payload)
+        with open(file_path, "wb") as f:
+            f.write(data)
+        return {"card_count": len(cards), "deck_count": len(decks), "bytes": len(data)}
+
     def _resolve_pull_limits(
         self,
         max_cards_per_deck: Optional[int],
@@ -1156,3 +1250,63 @@ def _xteink_stop_server() -> None:
 # Unregister mDNS when Anki profile closes so stale LAN records disappear.
 if hasattr(gui_hooks, "profile_will_close"):
     gui_hooks.profile_will_close.append(_xteink_stop_server)
+
+
+def _eink_export_menu(menu: Any, deck_id: int) -> None:
+    """Adds "eInk Reviews - Export to SD" to a deck's gear-icon options menu."""
+    action = menu.addAction(_t("export_sd_menu"))
+    qconnect(action.triggered, lambda: _eink_export_deck(deck_id))
+
+
+def _eink_export_deck(deck_id: int) -> None:
+    if not addon.collection_ready():
+        showInfo(_t("export_sd_error", error="No Anki collection is open"))
+        return
+
+    try:
+        deck_name = mw.col.decks.name(deck_id)
+    except Exception:
+        deck_name = "deck"
+
+    default_name = re.sub(r"[^\w.-]+", "_", deck_name).strip("_") or "deck"
+    file_path, _ = QFileDialog.getSaveFileName(
+        mw,
+        _t("export_sd_dialog_title"),
+        f"{default_name}-cards.ndjson",
+        "NDJSON (*.ndjson);;All files (*)",
+    )
+    if not file_path:
+        return
+
+    def run_export() -> None:
+        try:
+            result = addon.export_deck_to_file(deck_id, file_path)
+        except Exception as error:
+            LOGGER.exception("eInk export failed")
+            mw.taskman.run_on_main(
+                lambda: showInfo(_t("export_sd_error", error=str(error)))
+            )
+            return
+
+        def notify() -> None:
+            if result["card_count"] == 0:
+                showInfo(_t("export_sd_empty", deck=deck_name))
+            else:
+                showInfo(
+                    _t(
+                        "export_sd_saved",
+                        count=result["card_count"],
+                        decks=result["deck_count"],
+                        path=file_path,
+                    )
+                )
+
+        mw.taskman.run_on_main(notify)
+
+    # export_deck_to_file() blocks on a Future a main-thread QueryOp resolves
+    # (see its docstring) -- must run off the main thread, same as the HTTP
+    # server's worker thread does for a normal pull.
+    threading.Thread(target=run_export, daemon=True).start()
+
+
+gui_hooks.deck_browser_will_show_options_menu.append(_eink_export_menu)

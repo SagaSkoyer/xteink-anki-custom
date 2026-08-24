@@ -31,6 +31,22 @@ v2.4.0 release: the source tree is at add-on version **2.5.1**.
 Both machines must be on the same network, and Anki must be running for the
 device to pull cards or push reviews.
 
+## Exporting a deck without Wi-Fi
+
+Click the gear icon next to any deck on Anki's deck list → **eInk Reviews -
+Export to SD**. Pick a save location and it writes that deck's (and its
+subdecks') due cards to an `.ndjson` file — the same wire format and the same
+card-collection logic (`_collect_due_cards`) a device's normal "Download
+today's cards" pull uses, just written to a file you choose instead of served
+over HTTP. No network pairing needed on either side.
+
+Copy the result to the SD card as `/Anki/cards.ndjson` and use **Anki → Load
+today's cards from SD** on the device (see `../custom-bin-builds/SETUP.md` and
+`../sd-import/`). Note that cards exported this way still come from your real
+Anki collection, so — unlike the CSV-based cards `sd-import/` builds —
+reviewing them and later pushing reviews back through a normal Wi-Fi sync
+*does* grade the real Anki cards, since the ids match.
+
 ## Contents
 
 `__init__.py`, `protocol.py`, `textutil.py`, `mdns_advertise.py`,
