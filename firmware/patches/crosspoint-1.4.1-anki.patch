@@ -34165,7 +34165,7 @@ diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.
 index ecd7b0e..d3a9708 100644
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -8,6 +8,63 @@ STR_SLEEPING: "SLEEPING"
+@@ -8,6 +8,62 @@ STR_SLEEPING: "SLEEPING"
  STR_ENTERING_SLEEP: "Going to sleep"
  STR_BROWSE_FILES: "Browse Files"
  STR_FILE_TRANSFER: "File Transfer"
@@ -34201,7 +34201,6 @@ index ecd7b0e..d3a9708 100644
 +STR_ANKI_HARD: "Hard"
 +STR_ANKI_GOOD: "Good"
 +STR_ANKI_EASY: "Easy"
-+STR_ANKI_SIDE_PAGES: "Side buttons: pages"
 +STR_ANKI_REMAINING_FORMAT: "%u remaining"
 +STR_ANKI_PROGRESS_FORMAT: "%u/%u · %u%%"
 +STR_ANKI_DECK_FINISHED: "done"
@@ -34225,7 +34224,7 @@ index ecd7b0e..d3a9708 100644
 +STR_ANKI_NETWORK_HINT: "Start Anki on your computer and make sure both devices are on the same Wi-Fi."
 +STR_ANKI_UNDO: "Undo"
 +STR_ANKI_FLAG: "Flag"
-+STR_ANKI_SCROLL: "Scroll"
++STR_ANKI_BURY: "Bury"
  STR_SETTINGS_TITLE: "Settings"
  STR_CONTINUE_READING: "Continue Reading"
  STR_NO_OPEN_BOOK: "No open book"
@@ -34233,7 +34232,7 @@ diff --git a/lib/I18n/translations/german.yaml b/lib/I18n/translations/german.ya
 index a7c1ad0..72e0b73 100644
 --- a/lib/I18n/translations/german.yaml
 +++ b/lib/I18n/translations/german.yaml
-@@ -8,6 +8,63 @@ STR_SLEEPING: "STANDBY"
+@@ -8,6 +8,62 @@ STR_SLEEPING: "STANDBY"
  STR_ENTERING_SLEEP: "Standby"
  STR_BROWSE_FILES: "Durchsuchen"
  STR_FILE_TRANSFER: "Datentransfer"
@@ -34269,7 +34268,6 @@ index a7c1ad0..72e0b73 100644
 +STR_ANKI_HARD: "Schwer"
 +STR_ANKI_GOOD: "Gut"
 +STR_ANKI_EASY: "Einfach"
-+STR_ANKI_SIDE_PAGES: "Seiten: blättern"
 +STR_ANKI_REMAINING_FORMAT: "%u übrig"
 +STR_ANKI_PROGRESS_FORMAT: "%u/%u · %u%%"
 +STR_ANKI_DECK_FINISHED: "fertig"
@@ -34293,7 +34291,7 @@ index a7c1ad0..72e0b73 100644
 +STR_ANKI_NETWORK_HINT: "Starte Anki auf deinem Computer und stelle sicher, dass beide im gleichen WLAN sind."
 +STR_ANKI_UNDO: "Rückgängig"
 +STR_ANKI_FLAG: "Flag"
-+STR_ANKI_SCROLL: "Scrollen"
++STR_ANKI_BURY: "Zurückstellen"
  STR_SETTINGS_TITLE: "Einstellungen"
  STR_CONTINUE_READING: "Weiterlesen"
  STR_NO_OPEN_BOOK: "Aktuell kein Buch"
@@ -34306,7 +34304,7 @@ index 0fae051..896cca2 100644
  build_flags =
    ${base.build_flags}
 -  -DCROSSPOINT_VERSION=\"${crosspoint.version}\"
-+  -DCROSSPOINT_VERSION=\"${crosspoint.version}-anki-2.5.7\"
++  -DCROSSPOINT_VERSION=\"${crosspoint.version}-anki-2.6.0\"
    -DENABLE_SERIAL_LOG
    -DLOG_LEVEL=1 ; Set log level to info for release builds
  
@@ -34375,7 +34373,7 @@ new file mode 100644
 index 0000000..cb6892b
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,2031 @@
+@@ -0,0 +1,1788 @@
 +#include "AnkiActivity.h"
 +
 +#include "../../anki/AnkiFirmwareVersion.h"
@@ -35138,95 +35136,6 @@ index 0000000..cb6892b
 +  return bold;
 +}
 +
-+// One-line plain preview for the card status strip (answer side: show front / L2 prompt).
-+// Strips STX/ETX, table controls, and ** markers; collapses whitespace.
-+// Multi-line Front (EN blank DE) becomes a compact view: "EN / DE" — display only,
-+// not re-written into card body data. Vector-table blocks are skipped entirely.
-+std::string plainStatusPreview(const std::string& text) {
-+  auto cleanLine = [](const std::string& line) -> std::string {
-+    // Skip vector-table chrome lines.
-+    if (!line.empty() && line[0] == kTableRs) return "";
-+    std::string out;
-+    out.reserve(std::min<size_t>(line.size(), 160));
-+    bool pendingSpace = false;
-+    size_t i = 0;
-+    while (i < line.size()) {
-+      const char c = line[i];
-+      if (c == kBoldOn || c == kBoldOff || c == kTableRs || c == kCellUs) {
-+        i++;
-+        continue;
-+      }
-+      if (c == '*' && i + 1 < line.size() && line[i + 1] == '*') {
-+        i += 2;
-+        continue;
-+      }
-+      if (c == ' ' || c == '\t') {
-+        pendingSpace = !out.empty();
-+        i++;
-+        continue;
-+      }
-+      if (pendingSpace) {
-+        out.push_back(' ');
-+        pendingSpace = false;
-+      }
-+      const size_t next = nextUtf8Boundary(line, i);
-+      out.append(line, i, next - i);
-+      i = next;
-+    }
-+    return out;
-+  };
-+
-+  // Collect up to two non-empty logical lines → "EN / DE".
-+  // Skip lines inside a vector-table or vector-fig block.
-+  std::string line;
-+  std::string first;
-+  std::string second;
-+  bool inTable = false;
-+  bool inFig = false;
-+  for (size_t i = 0; i <= text.size(); i++) {
-+    const bool atEnd = i == text.size();
-+    const char c = atEnd ? '\n' : text[i];
-+    if (c == '\n' || c == '\r' || atEnd) {
-+      if (startsWithTableHeader(line, 0)) inTable = true;
-+      if (startsWithTableEnd(line, 0)) {
-+        inTable = false;
-+        line.clear();
-+        if (atEnd) break;
-+        if (c == '\r' && i + 1 < text.size() && text[i + 1] == '\n') i++;
-+        continue;
-+      }
-+      if (startsWithFigHeader(line, 0)) inFig = true;
-+      if (startsWithFigEnd(line, 0)) {
-+        inFig = false;
-+        line.clear();
-+        if (atEnd) break;
-+        if (c == '\r' && i + 1 < text.size() && text[i + 1] == '\n') i++;
-+        continue;
-+      }
-+      if (!inTable && !inFig) {
-+        const std::string cleaned = cleanLine(line);
-+        if (!cleaned.empty()) {
-+          if (first.empty()) {
-+            first = cleaned;
-+          } else if (second.empty() && cleaned != first) {
-+            second = cleaned;
-+            break;
-+          }
-+        }
-+      }
-+      line.clear();
-+      if (atEnd) break;
-+      // swallow \r\n as one break
-+      if (c == '\r' && i + 1 < text.size() && text[i + 1] == '\n') i++;
-+      continue;
-+    }
-+    line.push_back(c);
-+  }
-+  if (first.empty()) return "";
-+  if (second.empty()) return first;
-+  return first + " / " + second;
-+}
-+
 +int styledRangeWidth(const GfxRenderer& renderer, const std::string& text, const size_t start, const size_t end,
 +                     bool bold) {
 +  if (start >= end || start >= text.size()) return 0;
@@ -35502,16 +35411,19 @@ index 0000000..cb6892b
 +      requestUpdate();
 +      return;
 +    }
-+    // Bottom-3 (Left): short press flags, long-press buries.
-+    if (handleFlagOrBury()) return;
++    // Bottom-3 (Left): toggle the red flag.
++    if (mappedInput.wasPressed(B::Left)) {
++      applyFlagToggle();
++      return;
++    }
 +    // Bottom-2 (Confirm): undo the previous grade, if any.
 +    if (mappedInput.wasPressed(B::Confirm)) {
 +      undoLastAnswer();
 +      return;
 +    }
-+    // Bottom-4 (Right): scroll down through a long front.
++    // Bottom-4 (Right): bury — skip this card for the rest of the session.
 +    if (mappedInput.wasPressed(B::Right)) {
-+      nextPage();
++      buryCurrentCard();
 +      return;
 +    }
 +    // Top-left/top-right (Up/Down side buttons): flip to the answer.
@@ -35533,16 +35445,19 @@ index 0000000..cb6892b
 +      requestUpdate();
 +      return;
 +    }
-+    // Bottom-3 (Left): short press flags, long-press buries.
-+    if (handleFlagOrBury()) return;
++    // Bottom-3 (Left): toggle the red flag.
++    if (mappedInput.wasPressed(B::Left)) {
++      applyFlagToggle();
++      return;
++    }
 +    // Bottom-2 (Confirm): undo the previous grade, if any.
 +    if (mappedInput.wasPressed(B::Confirm)) {
 +      undoLastAnswer();
 +      return;
 +    }
-+    // Bottom-4 (Right): scroll down through a long answer.
++    // Bottom-4 (Right): bury — skip this card for the rest of the session.
 +    if (mappedInput.wasPressed(B::Right)) {
-+      nextPage();
++      buryCurrentCard();
 +      return;
 +    }
 +    // Top-left (Up): grade Again. Top-right (Down): grade Good.
@@ -35818,13 +35733,11 @@ index 0000000..cb6892b
 +  }
 +  if (currentCard.front.empty()) currentCard.front = tr(STR_ANKI_EMPTY_SIDE);
 +  if (currentCard.back.empty()) currentCard.back = tr(STR_ANKI_EMPTY_SIDE);
-+  resetPaging();
 +  return true;
 +}
 +
 +void AnkiActivity::showAnswer() {
 +  state = State::ANSWER;
-+  resetPaging();
 +  requestUpdate();
 +}
 +
@@ -35891,39 +35804,9 @@ index 0000000..cb6892b
 +  requestUpdate();
 +}
 +
-+void AnkiActivity::resetPaging() {
-+  pageStart = 0;
-+  nextPageStart = 0;
-+  pageHistory.clear();
-+  flagHoldFired = false;
-+}
 +
-+void AnkiActivity::nextPage() {
-+  const std::string& text = state == State::ANSWER ? currentCard.back : currentCard.front;
-+  if (nextPageStart > pageStart && nextPageStart < text.size()) {
-+    pageHistory.push_back(pageStart);
-+    pageStart = nextPageStart;
-+    requestUpdate();
-+  }
-+}
 +
-+void AnkiActivity::previousPage() {
-+  if (pageHistory.empty()) return;
-+  pageStart = pageHistory.back();
-+  pageHistory.pop_back();
-+  requestUpdate();
-+}
 +
-+void AnkiActivity::handleCardPaging() {
-+  // Unused now that paging is driven from loop() directly; kept in case of legacy call sites.
-+  if (mappedInput.wasPressed(MappedInputManager::Button::PageBack) ||
-+      mappedInput.wasPressed(MappedInputManager::Button::Up)) {
-+    previousPage();
-+  } else if (mappedInput.wasPressed(MappedInputManager::Button::PageForward) ||
-+             mappedInput.wasPressed(MappedInputManager::Button::Down)) {
-+    nextPage();
-+  }
-+}
 +
 +bool AnkiActivity::applyFlagToggle() {
 +  uint8_t newFlag = 0;
@@ -35936,28 +35819,6 @@ index 0000000..cb6892b
 +  return true;
 +}
 +
-+bool AnkiActivity::handleFlagOrBury() {
-+  // Bottom-3 (physical Left): short press toggles the red flag; holding it for
-+  // kFlagHoldMs instead buries the card — local-only, cleared on the next pull.
-+  using B = MappedInputManager::Button;
-+  if (mappedInput.wasPressed(B::Left)) {
-+    flagHoldFired = false;
-+  }
-+  if (mappedInput.isPressed(B::Left) && !flagHoldFired) {
-+    if (mappedInput.getHeldTime() >= kFlagHoldMs) {
-+      flagHoldFired = true;
-+      buryCurrentCard();
-+      return true;
-+    }
-+  }
-+  if (mappedInput.wasReleased(B::Left)) {
-+    const bool wasHold = flagHoldFired;
-+    flagHoldFired = false;
-+    if (!wasHold) return applyFlagToggle();
-+    return true;
-+  }
-+  return false;
-+}
 +
 +void AnkiActivity::render(RenderLock&&) {
 +  switch (state) {
@@ -36066,11 +35927,11 @@ index 0000000..cb6892b
 +  displayUiBuffer();
 +}
 +
-+size_t AnkiActivity::drawTextPage(const std::string& text, const size_t start, const int x, const int y,
-+                                  const int width, const int maxLines, const int lineHeight, const int scale,
-+                                  const bool /*boldDefault*/) {
-+  // boldDefault is unused: style comes from STX/ETX markers and optional ** toggles.
++void AnkiActivity::drawText(const std::string& text, const int x, const int y, const int width,
++                            const int maxLines, const int lineHeight, const int scale) {
++  // Style comes from STX/ETX markers and optional ** toggles.
 +  // Vector tables (\x04table …) are drawn as multi-row blocks with 1px grid lines.
++  // The card is a single screen: whatever does not fit above yLimit is clipped.
 +  //
 +  // Vertical layout is pixel-based.
 +  // Blank lines mark a new area (front EN/DE is consecutive; back uses blanks between
@@ -36080,7 +35941,7 @@ index 0000000..cb6892b
 +  const int yLimit = y + pageHeightPx;
 +  const int asc = scalePx(renderer.getFontAscenderSize(cardFontId()), scale);
 +
-+  size_t position = std::min(start, text.size());
++  size_t position = 0;
 +  int yPos = y;
 +  while (yPos + std::min(blankHeight, lineHeight) <= yLimit && position < text.size()) {
 +    while (position < text.size() && (text[position] == ' ' || text[position] == '\t')) position++;
@@ -36218,7 +36079,6 @@ index 0000000..cb6892b
 +    position = nextPosition;
 +    yPos += lineHeight;
 +  }
-+  return position;
 +}
 +
 +void AnkiActivity::renderCard(const bool answer) {
@@ -36227,110 +36087,35 @@ index 0000000..cb6892b
 +
 +  const auto& metrics = UITheme::getInstance().getMetrics();
 +  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-+  const int pageWidth = renderer.getScreenWidth();
-+  const int pageHeight = renderer.getScreenHeight();
 +  const std::string& text = answer ? currentCard.back : currentCard.front;
 +  // 1→UI_12@1×, 2→UI_18@1× (native medium), 3→UI_12@2×
 +  const int scaleHalf = fontScaleToHalf(ANKI_STORE.getFontScale());
 +  const bool landscape = ANKI_STORE.isLandscapeCards();
 +
-+  // Status strip (UI_10 throughout):
-+  //   progress bar | [flag column when set]
-+  //   "12/50 · 76%" | [front / EN+L2] | <deck name>
-+  //   ────────────────────────────────────
-+  // Flag layout (approved mocks):
-+  //   Landscape: right of bar, top = bar bottom edge (dropped under bar line).
-+  //   Portrait:  right column, bottom-aligned with status block; bar+deck shift left.
-+  const AnkiDeckInfo deckInfo = ANKI_STORE.getDeckInfo(ANKI_STORE.getCurrentDeckIndex());
-+  const uint16_t remaining = deckInfo.remaining;
-+  const uint16_t total = deckInfo.total > 0 ? deckInfo.total : remaining;
-+  const unsigned percentDone =
-+      total == 0 ? 100u
-+                 : static_cast<unsigned>((static_cast<uint32_t>(total - remaining) * 100u) / total);
++  // Cards have no header: no progress bar, no stats, no deck name, no side label.
++  // The text starts at the top of the safe area and is clipped at the bottom —
++  // there is no paging, so nothing past the first screen is laid out at all.
++  const int x = safe.x + metrics.contentSidePadding + 4;
++  const int contentTop = safe.y + (landscape ? 2 : 4);
++  // Text line pitch: at least kCardAreaGapPx (25); never below font advance (no overlap).
++  const int fontBody = scalePx(renderer.getLineHeight(cardFontId()), scaleHalf);
++  const int lineHeight = std::max(kCardAreaGapPx, fontBody + 2);
++  const int footerHeight = metrics.buttonHintsHeight + 8;
++  // Landscape: button hints sit on the side; safe area already accounts for that.
++  const int contentBottom = safe.y + safe.height - (landscape ? 4 : footerHeight);
++  const int availableHeight = std::max(1, contentBottom - contentTop);
++  const int maxLines = std::max(1, availableHeight / lineHeight);
++  const int contentWidth = safe.width - 2 * (metrics.contentSidePadding + 4);
 +
-+  const int padX = metrics.contentSidePadding;
-+  const int statusInnerW = std::max(1, safe.width - 2 * padX);
-+  const int statsFont = UI_10_FONT_ID;
-+  const int statsLineH = renderer.getLineHeight(statsFont);
-+  constexpr int kBarH = 8;
-+  constexpr int kFlagW = 18;
-+  constexpr int kFlagH = 16;
-+  constexpr int kFlagGap = 10;
-+  const bool showFlag = currentCard.flag != 0;
-+  // Content column (bar + stats + deck) shrinks when the flag column is reserved.
-+  const int contentW =
-+      showFlag ? std::max(40, statusInnerW - kFlagW - kFlagGap) : statusInnerW;
-+  const int gapAfterHeader = landscape ? 2 : 4;
-+  const int gapBarStats = 2;
-+  const int gapStatsSep = landscape ? 2 : 4;
-+  const int gapSepContent = landscape ? 4 : 8;
-+  int cursorY = safe.y + gapAfterHeader;
++  drawText(text, x, contentTop, contentWidth, maxLines, lineHeight, scaleHalf);
 +
-+  const int barY = cursorY;
-+  const int barX = safe.x + padX;
-+  const int barW = contentW;
-+  renderer.drawRect(barX, barY, barW, kBarH);
-+  if (total > 0 && percentDone > 0) {
-+    const int fillW = std::max(1, static_cast<int>((static_cast<int64_t>(barW - 2) * percentDone) / 100));
-+    renderer.fillRect(barX + 1, barY + 1, std::min(fillW, barW - 2), kBarH - 2, true);
-+  }
-+
-+  cursorY = barY + kBarH + gapBarStats;
-+
-+  const int statsY = cursorY;
-+  char stats[40];
-+  snprintf(stats, sizeof(stats), tr(STR_ANKI_PROGRESS_FORMAT), static_cast<unsigned int>(remaining),
-+           static_cast<unsigned int>(total), percentDone);
-+  const int statsW = renderer.getTextWidth(statsFont, stats, EpdFontFamily::REGULAR);
-+  renderer.drawText(statsFont, safe.x + padX, statsY, stats, true, EpdFontFamily::REGULAR);
-+
-+  // Right of content column: deck name (flag sits further right when set).
-+  constexpr int kSideGap = 8;
-+  int nameW = 0;
-+  std::string nameFit;
-+  if (!deckInfo.name.empty()) {
-+    // Cap deck name so front still gets room (~1/3 of content column).
-+    const int nameCap = std::max(40, contentW / 3);
-+    nameFit = renderer.truncatedText(statsFont, deckInfo.name.c_str(), nameCap, EpdFontFamily::BOLD);
-+    nameW = renderer.getTextWidth(statsFont, nameFit.c_str(), EpdFontFamily::BOLD);
-+    renderer.drawText(statsFont, safe.x + padX + contentW - nameW, statsY, nameFit.c_str(), true,
-+                      EpdFontFamily::BOLD);
-+  }
-+
-+  // Middle (answer only): front / EN+L2 prompt between progress and deck.
-+  if (answer) {
-+    const std::string frontPlain = plainStatusPreview(currentCard.front);
-+    if (!frontPlain.empty()) {
-+      const int leftEdge = statsW + kSideGap;
-+      const int rightEdge = nameW > 0 ? (contentW - nameW - kSideGap) : contentW;
-+      const int midMaxW = std::max(0, rightEdge - leftEdge);
-+      if (midMaxW > 16) {
-+        const std::string frontFit =
-+            renderer.truncatedText(statsFont, frontPlain.c_str(), midMaxW, EpdFontFamily::REGULAR);
-+        if (!frontFit.empty()) {
-+          const int frontW = renderer.getTextWidth(statsFont, frontFit.c_str(), EpdFontFamily::REGULAR);
-+          // Center within the middle slot (between progress and deck).
-+          const int midSlotX = safe.x + padX + leftEdge;
-+          const int frontX = midSlotX + std::max(0, (midMaxW - frontW) / 2);
-+          renderer.drawText(statsFont, frontX, statsY, frontFit.c_str(), true, EpdFontFamily::REGULAR);
-+        }
-+      }
-+    }
-+  }
-+
-+  // Flag column (right of content): orientation-specific vertical placement.
-+  if (showFlag) {
-+    const int flagX = safe.x + padX + statusInnerW - kFlagW;
-+    int flagY = barY;
-+    if (landscape) {
-+      // Top of flag sits on the lower progress-bar edge (dropped under the bar).
-+      flagY = barY + kBarH;
-+    } else {
-+      // Portrait: bottom-align with status block (stats line bottom).
-+      const int statusBottom = statsY + statsLineH;
-+      flagY = statusBottom - kFlagH;
-+    }
-+    // Solid pennant + pole (no internal white line).
++  // Flag: solid pennant in the bottom-right corner of the content area, drawn
++  // only when the card is flagged. Bottom-3 toggles it.
++  if (currentCard.flag != 0) {
++    constexpr int kFlagW = 18;
++    constexpr int kFlagH = 16;
++    const int flagX = safe.x + safe.width - metrics.contentSidePadding - kFlagW;
++    const int flagY = contentBottom - kFlagH;
 +    const int poleX = flagX + 2;
 +    renderer.drawLine(poleX, flagY, poleX, flagY + kFlagH, true);
 +    renderer.drawLine(poleX + 1, flagY, poleX + 1, flagY + kFlagH, true);
@@ -36346,42 +36131,12 @@ index 0000000..cb6892b
 +    }
 +  }
 +
-+  cursorY = statsY + statsLineH + gapStatsSep;
-+
-+  const int separatorY = cursorY;
-+  renderer.fillRect(safe.x + padX, separatorY, statusInnerW, 1, true);
-+
-+  const int x = safe.x + padX + 4;
-+  const int contentTop = separatorY + gapSepContent;
-+  // Text line pitch: at least kCardAreaGapPx (25); never below font advance (no overlap).
-+  // Blank rows between areas always advance exactly kCardAreaGapPx (see drawTextPage).
-+  const int fontBody = scalePx(renderer.getLineHeight(cardFontId()), scaleHalf);
-+  const int lineHeight = std::max(kCardAreaGapPx, fontBody + 2);
-+  const int footerHeight = metrics.buttonHintsHeight + renderer.getLineHeight(SMALL_FONT_ID) + 8;
-+  // Landscape: button hints sit on the side; safe area already accounts for that.
-+  const int contentBottom = safe.y + safe.height - (landscape ? 18 : footerHeight);
-+  const int availableHeight = std::max(1, contentBottom - contentTop);
-+  const int maxLines = std::max(1, availableHeight / lineHeight);
-+  const int contentWidth = safe.width - 2 * (metrics.contentSidePadding + 4);
-+
-+  nextPageStart =
-+      drawTextPage(text, pageStart, x, contentTop, contentWidth, maxLines, lineHeight, scaleHalf, false);
-+
-+  std::string paging;
-+  if (!pageHistory.empty()) paging += "< ";
-+  paging += tr(STR_ANKI_SIDE_PAGES);
-+  if (nextPageStart < text.size()) paging += " >";
-+  const int pagingY = landscape
-+                          ? safe.y + safe.height - renderer.getLineHeight(SMALL_FONT_ID) - 2
-+                          : pageHeight - metrics.buttonHintsHeight - renderer.getLineHeight(SMALL_FONT_ID) - 4;
-+  renderer.drawCenteredText(SMALL_FONT_ID, pagingY, paging.c_str());
-+
-+  // Bottom row is identical on front and back: Back / Undo / Flag(+hold=Bury) / Scroll.
++  // Bottom row is identical on front and back: Back / Undo / Flag / Bury.
 +  // Flip (front) and Again/Good (back) live on the top side buttons instead.
 +  (void)answer;
-+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_ANKI_UNDO), tr(STR_ANKI_FLAG), tr(STR_ANKI_SCROLL));
++  const auto labels =
++      mappedInput.mapLabels(tr(STR_BACK), tr(STR_ANKI_UNDO), tr(STR_ANKI_FLAG), tr(STR_ANKI_BURY));
 +  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-+  (void)pageWidth;
 +  displayCardBuffer();
 +}
 +
@@ -36399,7 +36154,7 @@ index 0000000..cb6892b
 +  const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID) + 4;
 +  const int maxLines = std::max(1, (pageHeight - y - metrics.buttonHintsHeight - metrics.verticalSpacing) / lineHeight);
 +  // scaleHalf 2 = 1.0× (UI messages stay unscaled)
-+  drawTextPage(message, 0, x, y, pageWidth - 2 * x, maxLines, lineHeight, 2, false);
++  drawText(message, x, y, pageWidth - 2 * x, maxLines, lineHeight, 2);
 +
 +  if (state != State::WORKING) {
 +    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_DONE), "", "");
@@ -36412,7 +36167,7 @@ new file mode 100644
 index 0000000..4af27c9
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.h
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,81 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -36460,16 +36215,9 @@ index 0000000..4af27c9
 +  bool discoverOfferedThisAction = false;
 +  uint32_t cardStartedAt = 0;
 +
-+  size_t pageStart = 0;
-+  size_t nextPageStart = 0;
-+  std::vector<size_t> pageHistory;
 +  // E-ink ghost cleanup: same cadence as the reader (SETTINGS refresh frequency).
 +  // Shared by card + menu paints; 0 forces HALF on the next paint, then FAST.
 +  int pagesUntilFullRefresh = 0;
-+
-+  // Bottom-3 (Left): short press flags; holding it >= kFlagHoldMs buries instead.
-+  static constexpr unsigned long kFlagHoldMs = 550;
-+  bool flagHoldFired = false;
 +
 +  void rebuildMenu();
 +  void displayCardBuffer();
@@ -36491,20 +36239,15 @@ index 0000000..4af27c9
 +  void buryCurrentCard();
 +  void undoLastAnswer();
 +  bool loadCurrentCard();
-+  void resetPaging();
-+  void handleCardPaging();
-+  // Bottom-3 (Left): short press flags, long-press buries.
-+  bool handleFlagOrBury();
++  // Bottom-3 (Left): toggle the red flag on the current card.
 +  bool applyFlagToggle();
-+  void nextPage();
-+  void previousPage();
 +  void applyUiOrientation(bool forCard);
 +
 +  void renderMenu();
 +  void renderCard(bool answer);
 +  void renderMessage(bool error);
-+  size_t drawTextPage(const std::string& text, size_t start, int x, int y, int width, int maxLines, int lineHeight,
-+                      int scale, bool bold);
++  // Draws one screenful; anything past maxLines is clipped (cards do not page).
++  void drawText(const std::string& text, int x, int y, int width, int maxLines, int lineHeight, int scale);
 +};
 diff --git a/src/activities/anki/AnkiSettingsActivity.cpp b/src/activities/anki/AnkiSettingsActivity.cpp
 new file mode 100644
@@ -36893,9 +36636,9 @@ index 0000000..7176f25
 +#include <cstring>
 +
 +// xteink-anki package version (bump with RELEASE_NOTES / dist binary).
-+// CROSSPOINT_VERSION is set by PlatformIO (e.g. 1.4.1-anki-2.5.7 on gh_release).
++// CROSSPOINT_VERSION is set by PlatformIO (e.g. 1.4.1-anki-2.6.0 on gh_release).
 +#ifndef XTEINK_ANKI_FW_VERSION
-+#define XTEINK_ANKI_FW_VERSION "2.5.7"
++#define XTEINK_ANKI_FW_VERSION "2.6.0"
 +#endif
 +
 +// Label for Anki UI headers (static buffer — UI thread only).
