@@ -1,3 +1,22 @@
+# v2.6.0 — stripped-down review pane
+
+## Firmware
+
+- **No header on cards** — the review pane drops the progress bar, the
+  `12/50 · 76%` stats line, the deck name and the answer-side front preview.
+  A card is now just its text.
+- **No paging** — text that does not fit is clipped at the bottom. The
+  `Side buttons: pages` hint is gone (`STR_ANKI_SIDE_PAGES` removed).
+- **Button 3 (Left):** flag toggle only. The ~0.55 s long-press-to-bury gesture
+  and its hold timer are gone.
+- **Button 4 (Right):** **Bury** (was: scroll) — skips the card for this
+  session without grading it, exactly as the old long-press did.
+- **Flag icon** moved to the bottom-right corner of the card, drawn only when
+  the card is flagged.
+- Progress is still tracked for the deck menu and sync; it is simply no longer
+  drawn on the card.
+- Flash required.
+
 # v2.5.7 — flag gesture works on X4 hardware
 
 ## Firmware

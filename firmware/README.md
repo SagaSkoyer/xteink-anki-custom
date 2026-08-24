@@ -30,16 +30,19 @@ Der Patch ergänzt:
     und Antwort,
   - **Unten 2 (Bestätigen):** **Rückgängig** — letzte Bewertung zurücknehmen
     und zur vorherigen Karte (Frage) zurückkehren,
-  - **Unten 3 (Links) kurz:** **Flag** umschalten; **lang halten (~0,55 s):**
-    **Zurückstellen** (Bury) — Karte nur lokal für heute überspringen, ohne
-    Bewertung; rein lokal und wird beim nächsten Pull verworfen,
-  - **Unten 4 (Rechts):** in langen Karten nach unten **blättern**,
-- **Flag:** Rotflag 0↔1 über Unten 3 (kurz); Icon rechts der Progress-Bar;
-  Sync Pull/Push,
-- **Progress:** zählt nur abgeschlossene Karten (Gut ohne Requeue); **Nochmal**
-  füllt den Balken nicht; zurückgestellte (Bury) Karten zählen ebenfalls nicht,
+  - **Unten 3 (Links):** **Flag** umschalten (0↔1), kein Langdruck mehr,
+  - **Unten 4 (Rechts):** **Zurückstellen** (Bury) — Karte nur lokal für heute
+    überspringen, ohne Bewertung; rein lokal und wird beim nächsten Pull
+    verworfen,
+- **Lernansicht ohne Kopfzeile:** keine Progress-Bar, kein Stapelname, keine
+  Seitenanzeige — nur der Kartentext. Zu langer Text wird unten **abgeschnitten**
+  (kein Blättern mehr),
+- **Flag:** Rotflag 0↔1 über Unten 3; Wimpel-Icon unten rechts auf der Karte,
+  nur wenn gesetzt; Sync Pull/Push,
+- **Progress:** zählt weiter nur abgeschlossene Karten (Gut ohne Requeue) für
+  Stapelmenü und Sync; auf der Karte wird sie nicht mehr angezeigt,
 - **Version:** Anki-Menü + Anki-Einstellungen zeigen Firmware-Version im Header
-  (Release: `1.4.1-anki-2.5.7`; auch Boot/System-Einstellungen),
+  (Release: `1.4.1-anki-2.6.0`; auch Boot/System-Einstellungen),
 - Platzhalter bei leeren Kartenseiten; Mac-Add-on mit Feld-Fallback,
 - Bewertungen am Gerät: `Nochmal` und `Gut` (Tasten oben); `Schwer`/`Einfach`
   entfallen mit der neuen Tastenbelegung,
