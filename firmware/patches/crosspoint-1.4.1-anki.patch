@@ -34165,7 +34165,7 @@ diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.
 index ecd7b0e..d3a9708 100644
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -8,6 +8,60 @@ STR_SLEEPING: "SLEEPING"
+@@ -8,6 +8,63 @@ STR_SLEEPING: "SLEEPING"
  STR_ENTERING_SLEEP: "Going to sleep"
  STR_BROWSE_FILES: "Browse Files"
  STR_FILE_TRANSFER: "File Transfer"
@@ -34223,6 +34223,9 @@ index ecd7b0e..d3a9708 100644
 +STR_ANKI_EMPTY_SIDE: "[no text]"
 +STR_ANKI_DECKS_LOADED: "decks loaded"
 +STR_ANKI_NETWORK_HINT: "Start Anki on your computer and make sure both devices are on the same Wi-Fi."
++STR_ANKI_UNDO: "Undo"
++STR_ANKI_FLAG: "Flag"
++STR_ANKI_SCROLL: "Scroll"
  STR_SETTINGS_TITLE: "Settings"
  STR_CONTINUE_READING: "Continue Reading"
  STR_NO_OPEN_BOOK: "No open book"
@@ -34230,7 +34233,7 @@ diff --git a/lib/I18n/translations/german.yaml b/lib/I18n/translations/german.ya
 index a7c1ad0..72e0b73 100644
 --- a/lib/I18n/translations/german.yaml
 +++ b/lib/I18n/translations/german.yaml
-@@ -8,6 +8,60 @@ STR_SLEEPING: "STANDBY"
+@@ -8,6 +8,63 @@ STR_SLEEPING: "STANDBY"
  STR_ENTERING_SLEEP: "Standby"
  STR_BROWSE_FILES: "Durchsuchen"
  STR_FILE_TRANSFER: "Datentransfer"
@@ -34288,6 +34291,9 @@ index a7c1ad0..72e0b73 100644
 +STR_ANKI_EMPTY_SIDE: "[kein Text]"
 +STR_ANKI_DECKS_LOADED: "Stapel geladen"
 +STR_ANKI_NETWORK_HINT: "Starte Anki auf deinem Computer und stelle sicher, dass beide im gleichen WLAN sind."
++STR_ANKI_UNDO: "Rückgängig"
++STR_ANKI_FLAG: "Flag"
++STR_ANKI_SCROLL: "Scrollen"
  STR_SETTINGS_TITLE: "Einstellungen"
  STR_CONTINUE_READING: "Weiterlesen"
  STR_NO_OPEN_BOOK: "Aktuell kein Buch"
@@ -34369,7 +34375,7 @@ new file mode 100644
 index 0000000..cb6892b
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,2068 @@
+@@ -0,0 +1,2031 @@
 +#include "AnkiActivity.h"
 +
 +#include "../../anki/AnkiFirmwareVersion.h"
@@ -35274,51 +35280,6 @@ index 0000000..cb6892b
 +  return penX;
 +}
 +
-+// Anki grade ease: 1=Again, 2=Hard, 3=Good, 4=Easy.
-+//
-+// drawButtonHints paints labels in HW slot order BACK, CONFIRM, LEFT, RIGHT at
-+// increasing portrait X — same order as CrossPoint / ButtonRemap (leftmost = BACK).
-+// Grade presses and labels share these tables so they stay in lockstep.
-+//
-+// RH L→R: Again, Hard, Good, Easy
-+// LH: independent table (do not derive by reversing RH — keeps current LH behavior)
-+constexpr int kHwLtr[4] = {
-+    static_cast<int>(HalGPIO::BTN_BACK),     // leftmost / slot 0
-+    static_cast<int>(HalGPIO::BTN_CONFIRM),  // slot 1
-+    static_cast<int>(HalGPIO::BTN_LEFT),     // slot 2
-+    static_cast<int>(HalGPIO::BTN_RIGHT),    // rightmost / slot 3
-+};
-+
-+constexpr uint8_t kRhEaseLtr[4] = {1, 2, 3, 4};  // Again Hard Good Easy
-+constexpr StrId kRhLabelLtr[4] = {StrId::STR_ANKI_AGAIN, StrId::STR_ANKI_HARD, StrId::STR_ANKI_GOOD,
-+                                  StrId::STR_ANKI_EASY};
-+
-+// LH grade row (unchanged vs previous on-device mapping with mirrored RH + reverse).
-+constexpr uint8_t kLhEaseLtr[4] = {1, 2, 3, 4};  // Again Hard Good Easy
-+constexpr StrId kLhLabelLtr[4] = {StrId::STR_ANKI_AGAIN, StrId::STR_ANKI_HARD, StrId::STR_ANKI_GOOD,
-+                                  StrId::STR_ANKI_EASY};
-+
-+// Returns ease 1..4, or 0 if hw is not a front grade button.
-+uint8_t gradeEaseForFrontButton(const int hw, const bool leftHanded) {
-+  const uint8_t* easeLtr = leftHanded ? kLhEaseLtr : kRhEaseLtr;
-+  for (int i = 0; i < 4; i++) {
-+    if (hw != kHwLtr[i]) continue;
-+    return easeLtr[i];
-+  }
-+  return 0;
-+}
-+
-+void drawGradeButtonHints(GfxRenderer& renderer, const bool leftHanded) {
-+  const StrId* labelLtr = leftHanded ? kLhLabelLtr : kRhLabelLtr;
-+  const char* hwLabels[4] = {
-+      I18n::getInstance().get(labelLtr[0]),
-+      I18n::getInstance().get(labelLtr[1]),
-+      I18n::getInstance().get(labelLtr[2]),
-+      I18n::getInstance().get(labelLtr[3]),
-+  };
-+  GUI.drawButtonHints(renderer, hwLabels[0], hwLabels[1], hwLabels[2], hwLabels[3]);
-+}
-+
 +void drawScaledGlyph(const GfxRenderer& renderer, const EpdFontFamily& font, const uint32_t cp, const int cursorX,
 +                     const int baselineY, const int scaleHalf, const bool black, const EpdFontFamily::Style style) {
 +  const EpdGlyph* glyph = font.getGlyph(cp, style);
@@ -35532,16 +35493,30 @@ index 0000000..cb6892b
 +  }
 +
 +  if (state == State::QUESTION) {
-+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
++    using B = MappedInputManager::Button;
++    // Bottom-1 (Back): always exits to the deck menu, front or back.
++    if (mappedInput.wasPressed(B::Back)) {
 +      applyUiOrientation(false);
 +      state = State::MENU;
 +      rebuildMenu();
 +      requestUpdate();
 +      return;
 +    }
-+    // Flag before Confirm→answer so Confirm+side can toggle without revealing.
-+    if (handleCardSideButtons()) return;
-+    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
++    // Bottom-3 (Left): short press flags, long-press buries.
++    if (handleFlagOrBury()) return;
++    // Bottom-2 (Confirm): undo the previous grade, if any.
++    if (mappedInput.wasPressed(B::Confirm)) {
++      undoLastAnswer();
++      return;
++    }
++    // Bottom-4 (Right): scroll down through a long front.
++    if (mappedInput.wasPressed(B::Right)) {
++      nextPage();
++      return;
++    }
++    // Top-left/top-right (Up/Down side buttons): flip to the answer.
++    if (mappedInput.wasPressed(B::Up) || mappedInput.wasPressed(B::PageBack) ||
++        mappedInput.wasPressed(B::Down) || mappedInput.wasPressed(B::PageForward)) {
 +      showAnswer();
 +      return;
 +    }
@@ -35549,17 +35524,35 @@ index 0000000..cb6892b
 +  }
 +
 +  if (state == State::ANSWER) {
-+    // Flag / side paging before grade buttons.
-+    if (handleCardSideButtons()) return;
-+    // Grade buttons: physical L→R is Again/Hard/Good/Easy (reversed when left-handed).
-+    // See gradeEaseForFrontButton() / drawGradeButtonHints().
-+    const int hw = mappedInput.getPressedFrontButton();
-+    if (hw >= 0) {
-+      const uint8_t ease = gradeEaseForFrontButton(hw, ANKI_STORE.isLeftHanded());
-+      if (ease != 0) {
-+        grade(ease);
-+        return;
-+      }
++    using B = MappedInputManager::Button;
++    // Bottom-1 (Back): always exits to the deck menu, front or back.
++    if (mappedInput.wasPressed(B::Back)) {
++      applyUiOrientation(false);
++      state = State::MENU;
++      rebuildMenu();
++      requestUpdate();
++      return;
++    }
++    // Bottom-3 (Left): short press flags, long-press buries.
++    if (handleFlagOrBury()) return;
++    // Bottom-2 (Confirm): undo the previous grade, if any.
++    if (mappedInput.wasPressed(B::Confirm)) {
++      undoLastAnswer();
++      return;
++    }
++    // Bottom-4 (Right): scroll down through a long answer.
++    if (mappedInput.wasPressed(B::Right)) {
++      nextPage();
++      return;
++    }
++    // Top-left (Up): grade Again. Top-right (Down): grade Good.
++    if (mappedInput.wasPressed(B::Up) || mappedInput.wasPressed(B::PageBack)) {
++      grade(1);
++      return;
++    }
++    if (mappedInput.wasPressed(B::Down) || mappedInput.wasPressed(B::PageForward)) {
++      grade(3);
++      return;
 +    }
 +    return;
 +  }
@@ -35835,18 +35828,7 @@ index 0000000..cb6892b
 +  requestUpdate();
 +}
 +
-+void AnkiActivity::grade(const uint8_t ease) {
-+  const uint32_t elapsed = std::min<uint32_t>(millis() - cardStartedAt, 3600000);
-+  std::string error;
-+  if (!ANKI_STORE.recordReview(ease, elapsed, error)) {
-+    applyUiOrientation(false);
-+    state = State::ERROR;
-+    message = error;
-+    restartOnDismiss = false;
-+    requestUpdate();
-+    return;
-+  }
-+
++void AnkiActivity::advanceAfterConsumingCard() {
 +  if (ANKI_STORE.hasRemainingCards()) {
 +    if (!loadCurrentCard()) return;
 +    state = State::QUESTION;
@@ -35865,11 +35847,54 @@ index 0000000..cb6892b
 +  requestUpdate();
 +}
 +
++void AnkiActivity::grade(const uint8_t ease) {
++  const uint32_t elapsed = std::min<uint32_t>(millis() - cardStartedAt, 3600000);
++  std::string error;
++  if (!ANKI_STORE.recordReview(ease, elapsed, error)) {
++    applyUiOrientation(false);
++    state = State::ERROR;
++    message = error;
++    restartOnDismiss = false;
++    requestUpdate();
++    return;
++  }
++  advanceAfterConsumingCard();
++}
++
++void AnkiActivity::buryCurrentCard() {
++  std::string error;
++  if (!ANKI_STORE.buryCurrentCard(error)) {
++    applyUiOrientation(false);
++    state = State::ERROR;
++    message = error;
++    restartOnDismiss = false;
++    requestUpdate();
++    return;
++  }
++  advanceAfterConsumingCard();
++}
++
++void AnkiActivity::undoLastAnswer() {
++  if (!ANKI_STORE.hasUndoableReview()) return;
++  std::string error;
++  if (!ANKI_STORE.undoLastReview(error)) {
++    applyUiOrientation(false);
++    state = State::ERROR;
++    message = error;
++    restartOnDismiss = false;
++    requestUpdate();
++    return;
++  }
++  if (!loadCurrentCard()) return;
++  state = State::QUESTION;
++  cardStartedAt = millis();
++  requestUpdate();
++}
++
 +void AnkiActivity::resetPaging() {
 +  pageStart = 0;
 +  nextPageStart = 0;
 +  pageHistory.clear();
-+  pendingSidePageDir = 0;
 +  flagHoldFired = false;
 +}
 +
@@ -35890,7 +35915,7 @@ index 0000000..cb6892b
 +}
 +
 +void AnkiActivity::handleCardPaging() {
-+  // Kept for any legacy call sites; card views use handleCardSideButtons().
++  // Unused now that paging is driven from loop() directly; kept in case of legacy call sites.
 +  if (mappedInput.wasPressed(MappedInputManager::Button::PageBack) ||
 +      mappedInput.wasPressed(MappedInputManager::Button::Up)) {
 +    previousPage();
@@ -35911,80 +35936,25 @@ index 0000000..cb6892b
 +  return true;
 +}
 +
-+bool AnkiActivity::tryToggleFlagGesture() {
-+  // X4 hardware: BTN_UP and BTN_DOWN share one ADC ladder — only one side button
-+  // can be detected at a time. Up+Down simultaneous chords are impossible.
-+  //
-+  // Working gestures (two ADC channels or timing):
-+  //   A) Confirm (front/ADC1) + Up or Down (side/ADC2)
-+  //   B) Long-press Up or Down ≥ kFlagHoldMs (short press pages on release)
++bool AnkiActivity::handleFlagOrBury() {
++  // Bottom-3 (physical Left): short press toggles the red flag; holding it for
++  // kFlagHoldMs instead buries the card — local-only, cleared on the next pull.
 +  using B = MappedInputManager::Button;
-+  const bool confHeld = mappedInput.isPressed(B::Confirm);
-+  const bool confEdge = mappedInput.wasPressed(B::Confirm);
-+  const bool upEdge = mappedInput.wasPressed(B::Up) || mappedInput.wasPressed(B::PageBack);
-+  const bool downEdge = mappedInput.wasPressed(B::Down) || mappedInput.wasPressed(B::PageForward);
-+  const bool upHeld = mappedInput.isPressed(B::Up) || mappedInput.isPressed(B::PageBack);
-+  const bool downHeld = mappedInput.isPressed(B::Down) || mappedInput.isPressed(B::PageForward);
-+  const bool sideEdge = upEdge || downEdge;
-+  const bool sideHeld = upHeld || downHeld;
-+
-+  // A) Cross-ADC chord: Confirm + either side button.
-+  if ((confHeld || confEdge) && (sideHeld || sideEdge)) {
-+    if (confEdge || sideEdge) {
-+      pendingSidePageDir = 0;
-+      flagHoldFired = true;
-+      return applyFlagToggle();
-+    }
++  if (mappedInput.wasPressed(B::Left)) {
++    flagHoldFired = false;
 +  }
-+
-+  // B) Long-press side only (single ADC) — fire once per hold.
-+  if (sideHeld && !confHeld && pendingSidePageDir != 0 && !flagHoldFired) {
++  if (mappedInput.isPressed(B::Left) && !flagHoldFired) {
 +    if (mappedInput.getHeldTime() >= kFlagHoldMs) {
 +      flagHoldFired = true;
-+      pendingSidePageDir = 0;
-+      return applyFlagToggle();
-+    }
-+  }
-+  return false;
-+}
-+
-+bool AnkiActivity::handleCardSideButtons() {
-+  using B = MappedInputManager::Button;
-+  const bool upEdge = mappedInput.wasPressed(B::Up) || mappedInput.wasPressed(B::PageBack);
-+  const bool downEdge = mappedInput.wasPressed(B::Down) || mappedInput.wasPressed(B::PageForward);
-+  const bool upRel = mappedInput.wasReleased(B::Up) || mappedInput.wasReleased(B::PageBack);
-+  const bool downRel = mappedInput.wasReleased(B::Down) || mappedInput.wasReleased(B::PageForward);
-+  const bool sideHeld =
-+      mappedInput.isPressed(B::Up) || mappedInput.isPressed(B::Down) ||
-+      mappedInput.isPressed(B::PageBack) || mappedInput.isPressed(B::PageForward);
-+
-+  // Start a short-press page candidate (resolved on release unless long-press flags).
-+  if (upEdge) {
-+    pendingSidePageDir = -1;
-+    flagHoldFired = false;
-+  } else if (downEdge) {
-+    pendingSidePageDir = 1;
-+    flagHoldFired = false;
-+  }
-+
-+  if (tryToggleFlagGesture()) return true;
-+
-+  // Short press: page on release if we never crossed the flag hold threshold.
-+  if (upRel || downRel) {
-+    const bool doPage = (pendingSidePageDir != 0 && !flagHoldFired);
-+    const int8_t dir = pendingSidePageDir;
-+    pendingSidePageDir = 0;
-+    flagHoldFired = false;
-+    if (doPage) {
-+      if (dir < 0) previousPage();
-+      else if (dir > 0) nextPage();
++      buryCurrentCard();
 +      return true;
 +    }
 +  }
-+
-+  // Clear latch when nothing side-related is held.
-+  if (!sideHeld && pendingSidePageDir == 0) {
++  if (mappedInput.wasReleased(B::Left)) {
++    const bool wasHold = flagHoldFired;
 +    flagHoldFired = false;
++    if (!wasHold) return applyFlagToggle();
++    return true;
 +  }
 +  return false;
 +}
@@ -36406,12 +36376,11 @@ index 0000000..cb6892b
 +                          : pageHeight - metrics.buttonHintsHeight - renderer.getLineHeight(SMALL_FONT_ID) - 4;
 +  renderer.drawCenteredText(SMALL_FONT_ID, pagingY, paging.c_str());
 +
-+  if (answer) {
-+    drawGradeButtonHints(renderer, ANKI_STORE.isLeftHanded());
-+  } else {
-+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_ANKI_ANSWER), "", "");
-+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-+  }
++  // Bottom row is identical on front and back: Back / Undo / Flag(+hold=Bury) / Scroll.
++  // Flip (front) and Again/Good (back) live on the top side buttons instead.
++  (void)answer;
++  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_ANKI_UNDO), tr(STR_ANKI_FLAG), tr(STR_ANKI_SCROLL));
++  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 +  (void)pageWidth;
 +  displayCardBuffer();
 +}
@@ -36498,10 +36467,8 @@ index 0000000..4af27c9
 +  // Shared by card + menu paints; 0 forces HALF on the next paint, then FAST.
 +  int pagesUntilFullRefresh = 0;
 +
-+  // Side Up/Down share one ADC — cannot chord both at once. Flag gestures:
-+  // Confirm+side, or long-press side (short press still pages on release).
++  // Bottom-3 (Left): short press flags; holding it >= kFlagHoldMs buries instead.
 +  static constexpr unsigned long kFlagHoldMs = 550;
-+  int8_t pendingSidePageDir = 0;  // -1 prev, +1 next, 0 none
 +  bool flagHoldFired = false;
 +
 +  void rebuildMenu();
@@ -36520,12 +36487,14 @@ index 0000000..4af27c9
 +  void startReviewForDeck(uint16_t deckIndex);
 +  void showAnswer();
 +  void grade(uint8_t ease);
++  void advanceAfterConsumingCard();
++  void buryCurrentCard();
++  void undoLastAnswer();
 +  bool loadCurrentCard();
 +  void resetPaging();
 +  void handleCardPaging();
-+  // Card side-button handling: flag gestures + short-press paging.
-+  bool handleCardSideButtons();
-+  bool tryToggleFlagGesture();
++  // Bottom-3 (Left): short press flags, long-press buries.
++  bool handleFlagOrBury();
 +  bool applyFlagToggle();
 +  void nextPage();
 +  void previousPage();
@@ -37027,7 +36996,7 @@ new file mode 100644
 index 0000000..61b8c94
 --- /dev/null
 +++ b/src/anki/AnkiStore.cpp
-@@ -0,0 +1,1049 @@
+@@ -0,0 +1,1146 @@
 +#include "AnkiStore.h"
 +
 +#include <ArduinoJson.h>
@@ -37289,6 +37258,7 @@ index 0000000..61b8c94
 +  reviewCount = 0;
 +  currentDeck = 0;
 +  decks.clear();
++  lastReview.valid = false;
 +}
 +
 +AnkiStore::DeckSession* AnkiStore::currentDeckSession() {
@@ -37328,6 +37298,7 @@ index 0000000..61b8c94
 +  if (deckIndex >= decks.size()) return false;
 +  if (currentDeck == deckIndex) return true;
 +  currentDeck = deckIndex;
++  lastReview.valid = false;
 +  std::string error;
 +  return saveSession(error);
 +}
@@ -37507,6 +37478,7 @@ index 0000000..61b8c94
 +}
 +
 +bool AnkiStore::installPulledBatch(std::string& error) {
++  lastReview.valid = false;
 +  HalFile cards;
 +  if (!Storage.openFileForRead("ANKI", PULL_TEMP_PATH, cards)) {
 +    error = "Downloaded Anki batch is missing";
@@ -38044,6 +38016,15 @@ index 0000000..61b8c94
 +  reviews.flush();
 +  reviews.close();
 +
++  // Snapshot for a single-level Undo, taken before this review mutates the deck.
++  lastReview.valid = true;
++  lastReview.deckIndex = currentDeck;
++  lastReview.cursor = deck->cursor;
++  lastReview.baseline = deck->baseline;
++  lastReview.completed = deck->completed;
++  lastReview.reviewCount = reviewCount;
++  lastReview.queue = deck->queue;
++
 +  const uint16_t reviewedCardIndex = deck->queue[deck->cursor];
 +  deck->cursor++;
 +  reviewCount++;
@@ -38061,6 +38042,91 @@ index 0000000..61b8c94
 +  }
 +
 +  return saveSession(error);
++}
++
++bool AnkiStore::buryCurrentCard(std::string& error) {
++  if (!hasRemainingCards()) {
++    error = "No Anki card to bury";
++    return false;
++  }
++  DeckSession* deck = currentDeckSession();
++  if (!deck) {
++    error = "Invalid Anki deck";
++    return false;
++  }
++  // Drop it from today's queue only; no review is logged and progress is
++  // unaffected. It stays due server-side and simply comes back on the next pull.
++  deck->queue.erase(deck->queue.begin() + deck->cursor);
++  lastReview.valid = false;
++  return saveSession(error);
++}
++
++bool AnkiStore::undoLastReview(std::string& error) {
++  if (!lastReview.valid) {
++    error = "Nothing to undo";
++    return false;
++  }
++  if (lastReview.deckIndex >= decks.size()) {
++    lastReview.valid = false;
++    error = "Invalid Anki deck";
++    return false;
++  }
++  if (!removeLastReviewLogLine(error)) return false;
++
++  DeckSession& deck = decks[lastReview.deckIndex];
++  deck.queue = lastReview.queue;
++  deck.cursor = lastReview.cursor;
++  deck.baseline = lastReview.baseline;
++  deck.completed = lastReview.completed;
++  reviewCount = lastReview.reviewCount;
++  currentDeck = lastReview.deckIndex;
++  lastReview.valid = false;
++
++  return saveSession(error);
++}
++
++bool AnkiStore::removeLastReviewLogLine(std::string& error) {
++  // Rewrite REVIEWS_PATH without its last line (mirrors writeFlagOverride's
++  // read-all/rewrite approach; the log stays small enough for this to be cheap).
++  if (!Storage.exists(REVIEWS_PATH)) {
++    error.clear();
++    return true;
++  }
++  std::vector<std::string> lines;
++  HalFile in;
++  if (Storage.openFileForRead("ANKI", REVIEWS_PATH, in)) {
++    std::string line;
++    bool tooLong = false;
++    while (readLine(in, line, 128, tooLong)) {
++      if (tooLong || line.empty()) continue;
++      lines.push_back(line);
++    }
++    in.close();
++  }
++  if (!lines.empty()) lines.pop_back();
++
++  Storage.remove(REVIEWS_PATH);
++  if (lines.empty()) {
++    error.clear();
++    return true;
++  }
++  HalFile out = Storage.open(REVIEWS_PATH, O_WRONLY | O_CREAT | O_TRUNC);
++  if (!out) {
++    error = "Could not rewrite the local Anki review log";
++    return false;
++  }
++  for (const auto& l : lines) {
++    const std::string row = l + "\n";
++    if (out.write(row.data(), row.size()) != row.size()) {
++      out.close();
++      error = "Could not rewrite the local Anki review log";
++      return false;
++    }
++  }
++  out.flush();
++  out.close();
++  error.clear();
++  return true;
 +}
 +
 +bool AnkiStore::clearSession(std::string& error) {
@@ -38082,7 +38148,7 @@ new file mode 100644
 index 0000000..e12cce7
 --- /dev/null
 +++ b/src/anki/AnkiStore.h
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,182 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -38157,6 +38223,15 @@ index 0000000..e12cce7
 +  bool recordReview(uint8_t ease, uint32_t durationMs, std::string& error);
 +  // Toggle Anki red flag (0 ↔ 1) on the current card; persists until push/clear.
 +  bool toggleCurrentCardFlag(uint8_t& newFlag, std::string& error);
++  // Remove the current card from today's queue without grading or logging a
++  // review. Local-only: the deck is rebuilt from scratch on the next pull, so a
++  // buried card is simply due again then.
++  bool buryCurrentCard(std::string& error);
++  // Single-level undo of the most recent recordReview() call: restores the
++  // deck's queue/cursor/progress and removes the appended review-log line.
++  // Cleared on deck switch or a fresh pull/clear.
++  bool hasUndoableReview() const { return lastReview.valid; }
++  bool undoLastReview(std::string& error);
 +  bool clearSession(std::string& error);
 +
 +  // Build JSON push body (reviews + dirty flags) to PUSH_TEMP_PATH for streaming upload.
@@ -38197,6 +38272,18 @@ index 0000000..e12cce7
 +    }
 +  };
 +
++  // Snapshot of a DeckSession taken just before recordReview() mutates it, so a
++  // single Undo press can put everything back (including the review-log line).
++  struct LastReviewUndo {
++    bool valid = false;
++    uint16_t deckIndex = 0;
++    uint16_t cursor = 0;
++    uint16_t baseline = 0;
++    uint16_t completed = 0;
++    uint16_t reviewCount = 0;
++    std::vector<uint16_t> queue;
++  };
++
 +  AnkiStore() = default;
 +
 +  static constexpr const char* CONFIG_PATH = "/.crosspoint/anki-config.json";
@@ -38214,6 +38301,8 @@ index 0000000..e12cce7
 +  bool lookupFlagOverride(uint64_t cardId, uint8_t& flag) const;
 +  bool writeFlagOverride(uint64_t cardId, uint8_t flag, std::string& error);
 +  uint8_t clampFlag(int value) const;
++  // Drops the last line of REVIEWS_PATH (the row recordReview() just appended).
++  bool removeLastReviewLogLine(std::string& error);
 +
 +  std::string serverUrl;
 +  std::string apiToken;
@@ -38229,6 +38318,7 @@ index 0000000..e12cce7
 +  uint16_t reviewCount = 0;
 +  uint16_t currentDeck = 0;
 +  std::vector<DeckSession> decks;
++  LastReviewUndo lastReview;
 +  static const std::string EMPTY_DECK_NAME;
 +
 +  bool loadSession(std::string& error);
