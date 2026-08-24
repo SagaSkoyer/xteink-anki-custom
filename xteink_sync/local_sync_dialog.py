@@ -114,7 +114,7 @@ class LocalSyncDialog(QDialog):
                             | Qt.ItemFlag.ItemIsUserCheckable
                             | Qt.ItemFlag.ItemIsAutoTristate
                         )
-                        item.setCheckState(Qt.CheckState.Unchecked)
+                        item.setCheckState(0, Qt.CheckState.Unchecked)
                         nodes[path] = item
                     parent_widget = item
                 # The leaf item now corresponds to this actual Anki deck.
