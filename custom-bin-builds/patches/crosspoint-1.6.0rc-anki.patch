@@ -38207,7 +38207,7 @@ index 26f4fcf..4216f00 100644
  STR_FILE_TRANSFER: "Datentransfer"
  STR_SETTINGS_TITLE: "Einstellungen"
 diff --git a/platformio.ini b/platformio.ini
-index e07c59d..d97229e 100644
+index e07c59d..835044c 100644
 --- a/platformio.ini
 +++ b/platformio.ini
 @@ -5,6 +5,8 @@ extra_configs = platformio.local.ini
@@ -38215,7 +38215,7 @@ index e07c59d..d97229e 100644
  [crosspoint]
  version = 1.5.0
 +; Xteink Anki custom build: CrossPoint 1.6.0 beta RC + xteink-anki package version.
-+anki_version = 1.6.0rc-anki-2.7.0
++anki_version = 1.6.0rc-anki-2.8.0
  
  [base]
  platform = https://github.com/pioarduino/platform-espressif32/releases/download/55.03.37/platform-espressif32.zip
@@ -38331,6 +38331,41 @@ index 21ceeae..f692838 100644
    // Point size of the reader font. Only sizes the active family actually ships
    // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
    // available size (and persists the snap) whenever the family changes.
+diff --git a/src/CrossPointState.cpp b/src/CrossPointState.cpp
+index 5435e99..56537be 100644
+--- a/src/CrossPointState.cpp
++++ b/src/CrossPointState.cpp
+@@ -52,6 +52,7 @@ void CrossPointState::toJson(JsonDocument& doc) const {
+   doc["recentOverlaySleepFill"] = recentOverlaySleepFill;
+   doc["readerActivityLoadCount"] = readerActivityLoadCount;
+   doc["lastSleepFromReader"] = lastSleepFromReader;
++  doc["lastSleepAnkiResume"] = lastSleepAnkiResume;
+   doc["showBootScreen"] = showBootScreen;
+ }
+ 
+@@ -89,6 +90,8 @@ bool CrossPointState::fromJson(JsonVariantConst doc) {
+   }
+   readerActivityLoadCount = doc["readerActivityLoadCount"] | static_cast<uint8_t>(0);
+   lastSleepFromReader = doc["lastSleepFromReader"] | false;
++  lastSleepAnkiResume = doc["lastSleepAnkiResume"] | static_cast<uint8_t>(0);
++  if (lastSleepAnkiResume > 2) lastSleepAnkiResume = 0;
+   showBootScreen = doc["showBootScreen"] | true;
+   return true;
+ }
+diff --git a/src/CrossPointState.h b/src/CrossPointState.h
+index ebc57ba..397e6ce 100644
+--- a/src/CrossPointState.h
++++ b/src/CrossPointState.h
+@@ -22,6 +22,9 @@ class CrossPointState : public PersistableStore<CrossPointState> {
+   uint8_t recentOverlaySleepFill = 0;
+   uint8_t readerActivityLoadCount = 0;
+   bool lastSleepFromReader = false;
++  // 0 = no Anki review on screen at the last sleep, 1 = question side,
++  // 2 = answer side. Read once on wake to resume the same card, then cleared.
++  uint8_t lastSleepAnkiResume = 0;
+   bool showBootScreen = true;
+ 
+   static const char* getFilePath() { return "/.crosspoint/state.json"; }
 diff --git a/src/SdCardFontSystem.cpp b/src/SdCardFontSystem.cpp
 index 77471a9..fe1591b 100644
 --- a/src/SdCardFontSystem.cpp
@@ -38385,8 +38420,21 @@ index f94345c..5347acf 100644
  void silentRestart();          // home screen
  void silentRestartToReader();  // currently-open EPUB (APP_STATE.openEpubPath)
 +void silentRestartToAnki();    // Anki menu (after WiFi pull/push heap defrag)
+diff --git a/src/activities/Activity.h b/src/activities/Activity.h
+index 30fac5c..5ebf006 100644
+--- a/src/activities/Activity.h
++++ b/src/activities/Activity.h
+@@ -44,6 +44,8 @@ class Activity {
+   virtual bool skipLoopDelay() { return false; }
+   virtual bool preventAutoSleep() { return false; }
+   virtual bool isReaderActivity() const { return false; }
++  // Anki review side currently on screen (NONE for every other activity).
++  virtual AnkiReviewResume ankiReviewResume() const { return AnkiReviewResume::NONE; }
+   // True for the reading surfaces night mode inverts (EPUB/TXT/XTC). Resolved
+   // per render by ActivityManager, so menus, overlays, and every other screen
+   // keep normal polarity without managing the display flag themselves.
 diff --git a/src/activities/ActivityManager.cpp b/src/activities/ActivityManager.cpp
-index dd03723..78b4b1a 100644
+index dd03723..e3325e7 100644
 --- a/src/activities/ActivityManager.cpp
 +++ b/src/activities/ActivityManager.cpp
 @@ -10,6 +10,7 @@
@@ -38397,16 +38445,18 @@ index dd03723..78b4b1a 100644
  #include "boot_sleep/BootActivity.h"
  #include "boot_sleep/SleepActivity.h"
  #include "browser/OpdsBookBrowserActivity.h"
-@@ -223,6 +224,8 @@ void ActivityManager::goToBrowser() {
+@@ -223,6 +224,10 @@ void ActivityManager::goToBrowser() {
    }
  }
  
-+void ActivityManager::goToAnki() { replaceActivity(std::make_unique<AnkiActivity>(renderer, mappedInput)); }
++void ActivityManager::goToAnki(const bool resumeReview, const bool resumeOnAnswer) {
++  replaceActivity(std::make_unique<AnkiActivity>(renderer, mappedInput, resumeReview, resumeOnAnswer));
++}
 +
  void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {
    if (path.empty()) {
      goToFileBrowser("/");
-@@ -265,6 +268,8 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
+@@ -265,6 +270,8 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
        initialMenuItem = HomeMenuItem::RECENTS;
      } else if (activityName == "OpdsBookBrowser") {
        initialMenuItem = HomeMenuItem::OPDS_BROWSER;
@@ -38415,33 +38465,56 @@ index dd03723..78b4b1a 100644
      } else if (activityName == "CrossPointWebServer") {
        initialMenuItem = HomeMenuItem::FILE_TRANSFER;
      } else if (activityName == "Settings") {
+@@ -302,6 +309,10 @@ bool ActivityManager::isReaderActivity() const {
+          (currentActivity && currentActivity->isReaderActivity());
+ }
+ 
++AnkiReviewResume ActivityManager::ankiReviewResume() const {
++  return currentActivity ? currentActivity->ankiReviewResume() : AnkiReviewResume::NONE;
++}
++
+ bool ActivityManager::handleForcedRefresh() { return currentActivity && currentActivity->handleForcedRefresh(); }
+ 
+ bool ActivityManager::skipLoopDelay() const { return currentActivity && currentActivity->skipLoopDelay(); }
 diff --git a/src/activities/ActivityManager.h b/src/activities/ActivityManager.h
-index 8d3c49e..2ecb781 100644
+index 8d3c49e..c14d7a9 100644
 --- a/src/activities/ActivityManager.h
 +++ b/src/activities/ActivityManager.h
-@@ -17,7 +17,7 @@
+@@ -17,7 +17,11 @@
  class Activity;    // forward declaration
  class RenderLock;  // forward declaration
  
 -enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
 +enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, OPDS_BROWSER, ANKI, FILE_TRANSFER, SETTINGS_MENU };
++
++// Which Anki review side is on screen, so a deep-sleep wake can come back to
++// the very card that was being reviewed instead of the home menu.
++enum class AnkiReviewResume : uint8_t { NONE, QUESTION, ANSWER };
  
  /**
   * ActivityManager
-@@ -86,6 +86,7 @@ class ActivityManager {
+@@ -86,6 +90,7 @@ class ActivityManager {
    void goToFileBrowser(std::string path = {});
    void goToRecentBooks();
    void goToBrowser();
-+  void goToAnki();
++  void goToAnki(bool resumeReview = false, bool resumeOnAnswer = false);
    void goToReader(std::string path, bool allowFastInitialRefresh = false);
    void goToSleep(bool fromTimeout = false);
    void goToBoot();
+@@ -102,6 +107,7 @@ class ActivityManager {
+ 
+   bool preventAutoSleep() const;
+   bool isReaderActivity() const;
++  AnkiReviewResume ankiReviewResume() const;
+   bool handleForcedRefresh();
+   bool skipLoopDelay() const;
+   ScreenshotInfo getScreenshotInfo() const;
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..6cb4e5d
+index 0000000..47e7746
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,1949 @@
+@@ -0,0 +1,1965 @@
 +#include "AnkiActivity.h"
 +
 +#include "../../anki/AnkiFirmwareVersion.h"
@@ -39444,7 +39517,17 @@ index 0000000..6cb4e5d
 +  } else {
 +    state = State::MENU;
 +    rebuildMenu();
++    // Deep-sleep wake from a card: the queue and its cursor live in
++    // AnkiStore's persisted session, so the current card is still the one
++    // that was on screen. Fall back to the menu when the deck was finished
++    // or cleared while the device slept.
++    if (resumeReview && ANKI_STORE.hasBatch() && ANKI_STORE.hasRemainingCards()) {
++      startReview();
++      if (state == State::QUESTION && resumeOnAnswer) showAnswer();
++    }
 +  }
++  resumeReview = false;
++  resumeOnAnswer = false;
 +  requestUpdate();
 +}
 +
@@ -39472,6 +39555,12 @@ index 0000000..6cb4e5d
 +}
 +
 +bool AnkiActivity::preventAutoSleep() { return state == State::WORKING; }
++
++AnkiReviewResume AnkiActivity::ankiReviewResume() const {
++  if (state == State::QUESTION) return AnkiReviewResume::QUESTION;
++  if (state == State::ANSWER) return AnkiReviewResume::ANSWER;
++  return AnkiReviewResume::NONE;
++}
 +
 +void AnkiActivity::applyUiOrientation(const bool forCard) {
 +  if (forCard && ANKI_STORE.isLandscapeCards()) {
@@ -40393,10 +40482,10 @@ index 0000000..6cb4e5d
 +}
 diff --git a/src/activities/anki/AnkiActivity.h b/src/activities/anki/AnkiActivity.h
 new file mode 100644
-index 0000000..08d1c32
+index 0000000..a91cc7e
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.h
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,92 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -40412,14 +40501,19 @@ index 0000000..08d1c32
 + public:
 +  enum class MenuAction { LEARN, DECK, DOWNLOAD, LOAD_SD, UPLOAD, CONFIGURE };
 +
-+  explicit AnkiActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-+      : Activity("Anki", renderer, mappedInput) {}
++  // resumeReview: open straight into the current card of the current deck
++  // instead of the Anki menu (deep-sleep wake). resumeOnAnswer additionally
++  // restores the answer side, i.e. exactly what was on screen at sleep.
++  explicit AnkiActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool resumeReview = false,
++                        bool resumeOnAnswer = false)
++      : Activity("Anki", renderer, mappedInput), resumeReview(resumeReview), resumeOnAnswer(resumeOnAnswer) {}
 +
 +  void onEnter() override;
 +  void onExit() override;
 +  void loop() override;
 +  void render(RenderLock&&) override;
 +  bool preventAutoSleep() override;
++  AnkiReviewResume ankiReviewResume() const override;
 +
 + private:
 +  enum class State { MENU, WORKING, QUESTION, ANSWER, MESSAGE, ERROR };
@@ -40443,6 +40537,9 @@ index 0000000..08d1c32
 +  // One mDNS offer per pull/push attempt (avoid dialog loop after retry fails).
 +  bool discoverOfferedThisAction = false;
 +  uint32_t cardStartedAt = 0;
++  // Set by the constructor, consumed by onEnter().
++  bool resumeReview = false;
++  bool resumeOnAnswer = false;
 +
 +  // E-ink ghost cleanup: same cadence as the reader (SETTINGS refresh frequency).
 +  // Shared by card + menu paints; 0 forces HALF on the next paint, then FAST.
@@ -40870,7 +40967,7 @@ index ab0a6c5..9ce8483 100644
      const auto& families = registry_->getFamilies();
 diff --git a/src/anki/AnkiFirmwareVersion.h b/src/anki/AnkiFirmwareVersion.h
 new file mode 100644
-index 0000000..edf72bb
+index 0000000..600cc34
 --- /dev/null
 +++ b/src/anki/AnkiFirmwareVersion.h
 @@ -0,0 +1,26 @@
@@ -40882,7 +40979,7 @@ index 0000000..edf72bb
 +// xteink-anki package version (bump with RELEASE_NOTES / dist binary).
 +// CROSSPOINT_VERSION is set by PlatformIO (e.g. 1.4.1-anki-2.7.0 on gh_release).
 +#ifndef XTEINK_ANKI_FW_VERSION
-+#define XTEINK_ANKI_FW_VERSION "2.7.0"
++#define XTEINK_ANKI_FW_VERSION "2.8.0"
 +#endif
 +
 +// Label for Anki UI headers (static buffer — UI thread only).
@@ -42961,7 +43058,7 @@ index 0365165..c59159d 100644
 +static_assert(UI_18_FONT_ID != 0, "Font ID collision with sentinel");
  static_assert(SMALL_FONT_ID != 0, "Font ID collision with sentinel");
 diff --git a/src/main.cpp b/src/main.cpp
-index 517ebd6..564f974 100644
+index 517ebd6..095192c 100644
 --- a/src/main.cpp
 +++ b/src/main.cpp
 @@ -61,44 +61,23 @@ constexpr unsigned long DEFAULT_RECOVERY_SETTLE_MS = 500;
@@ -43059,7 +43156,16 @@ index 517ebd6..564f974 100644
  bool handleX4ProFrontlightDoubleClick() {
    if (!BoardConfig::isX4Pro() || !gpio.wasReleased(HalGPIO::BTN_POWER)) {
      return false;
-@@ -313,19 +311,15 @@ void setupDisplayAndFonts(bool seamless = false) {
+@@ -251,6 +249,8 @@ static bool loadSleepFrameBuffer() {
+ void enterDeepSleep(bool fromTimeout = false) {
+   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
+   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
++  // Remember an open Anki card so the wake lands back on it instead of home.
++  APP_STATE.lastSleepAnkiResume = static_cast<uint8_t>(activityManager.ankiReviewResume());
+ 
+   const bool isQuickResumeSleep =
+       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
+@@ -313,19 +313,15 @@ void setupDisplayAndFonts(bool seamless = false) {
    }
    fontCacheManager.setFontDecompressor(&fontDecompressor);
    renderer.setFontCacheManager(&fontCacheManager);
@@ -43081,7 +43187,7 @@ index 517ebd6..564f974 100644
    renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
  
    // Discover and load SD card fonts
-@@ -361,7 +355,7 @@ void setup() {
+@@ -361,7 +357,7 @@ void setup() {
    // Bound the target range too — RTC_NOINIT memory is uninitialized on cold boot.
    const bool isSilentReboot = (silentRebootMagic == SILENT_REBOOT_MAGIC);
    const uint32_t snapshotTarget =
@@ -43090,7 +43196,7 @@ index 517ebd6..564f974 100644
    silentRebootMagic = 0;
    silentRebootTarget = 0;
  
-@@ -514,6 +508,9 @@ void setup() {
+@@ -514,11 +510,22 @@ void setup() {
    } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_READER &&
               !APP_STATE.openEpubPath.empty()) {
      activityManager.goToReader(APP_STATE.openEpubPath);
@@ -43100,6 +43206,19 @@ index 517ebd6..564f974 100644
    } else if (resume == BootResume::Silent) {
      // target == home (or reader with no open book): land on home — don't fall
      // through to the sleep-wake "resume reader" logic, which fires on stale
+     // openEpubPath + lastSleepFromReader from a prior session.
+     activityManager.goHome();
++  } else if (APP_STATE.lastSleepAnkiResume != 0 && !mappedInputManager.isPressed(MappedInputManager::Button::Back)) {
++    // Woke from an Anki card: AnkiStore's persisted queue cursor still points
++    // at that card, so re-open it (with the same side showing) rather than the
++    // home menu. Consumed here, so a reboot after a crash lands on home.
++    const bool resumeOnAnswer = APP_STATE.lastSleepAnkiResume == static_cast<uint8_t>(AnkiReviewResume::ANSWER);
++    APP_STATE.lastSleepAnkiResume = 0;
++    APP_STATE.saveToFile();
++    activityManager.goToAnki(/*resumeReview=*/true, resumeOnAnswer);
+   } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
+              mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
+     // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
 diff --git a/src/network/CrossPointWebServer.cpp b/src/network/CrossPointWebServer.cpp
 index 1f0f44d..8aa43ca 100644
 --- a/src/network/CrossPointWebServer.cpp

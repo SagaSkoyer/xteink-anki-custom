@@ -21,6 +21,7 @@ Working for daily use on Xteink (X3 tested) + Anki Desktop (macOS tested):
 - Push reviews with batch id (safe retries); scheduler runs on the Mac
 - **XFD converter** on pull: HTML/Markdown tables, lists, headings → e-ink plain text
 - **Bold on e-ink (Phase B):** `**…**` / `<b>` → mixed bold/regular runs on the device
+- **Sleep resumes the card:** waking from sleep during a review reopens that same card (hold **Back** while waking for the home screen)
 
 Known limits of the offline model: learning steps after Again/Hard are re-queued **locally** on the device; final intervals always come from Anki’s scheduler after push.
 
