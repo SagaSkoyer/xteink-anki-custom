@@ -15,7 +15,7 @@ Upstream base: <https://github.com/crosspoint-reader/crosspoint-reader>
 
 - Tag: `1.6.0rc` (the 1.6.0 beta RC line)
 - Commit: `6a501bba544d9e80598811dbdf2134d1bcb1ebd2`
-- Reported firmware version: `1.6.0rc-anki-2.7.0`
+- Reported firmware version: `1.6.0rc-anki-2.8.0`
 
 ## Device compatibility
 

@@ -1,3 +1,24 @@
+# v2.8.0 — wake straight back into the card you were on
+
+## Firmware
+
+Sleeping in the middle of a review (power button, or the auto-sleep timeout) and
+waking up dropped you on the home menu, so every interruption cost two menu
+levels — Home → Anki → Learn — before the card came back.
+
+- **Resume review on wake:** if an Anki card was on screen when the device went
+  to sleep, the wake opens that same card again instead of the home screen.
+  The side is restored too: asleep on the answer, awake on the answer.
+- Nothing is re-scheduled or re-drawn from scratch: the deck queue and its
+  cursor already live in `anki-state.json`, so the resumed card *is* the card
+  that was pending — the review timer simply restarts at the wake.
+- **Escape hatch:** hold **Back** while waking to go to the home screen instead
+  (same convention as the reader's resume). The resume flag is one-shot, so a
+  reboot after a crash also lands on home.
+- Sleeping anywhere else — Anki menu, deck list, settings, reader, home —
+  behaves exactly as before.
+- Flash required.
+
 # v2.7.0 — fast card flips with an SD (CJK) font
 
 ## Firmware
