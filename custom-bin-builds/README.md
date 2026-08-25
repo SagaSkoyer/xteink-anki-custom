@@ -15,7 +15,12 @@ Upstream base: <https://github.com/crosspoint-reader/crosspoint-reader>
 
 - Tag: `1.6.0rc` (the 1.6.0 beta RC line)
 - Commit: `6a501bba544d9e80598811dbdf2134d1bcb1ebd2`
-- Reported firmware version: `1.6.0rc-anki-2.8.0`
+- Reported firmware version: `1.6.0rc-anki-2.9.0`
+
+> **The committed `.bin` is still the 2.8.0 build.** The 2.9.0 daily-loop patch
+> has not been compiled into an image yet — run `./build.sh` and refresh both
+> lines of `SHA256SUMS` before publishing a release. The patch checksum below is
+> current; the image checksum is for the older image.
 
 ## Device compatibility
 

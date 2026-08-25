@@ -38070,10 +38070,10 @@ index 6032e2e..33054cb 100644
    const std::map<int, EpdFontFamily>& getFontMap() const { return fontMap; }
    void registerSdCardFont(int fontId, SdCardFont* font) { sdCardFonts_[fontId] = font; }
 diff --git a/lib/I18n/translations/english.yaml b/lib/I18n/translations/english.yaml
-index 1c2f887..00e0af5 100644
+index 1c2f887..4c24f03 100644
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -6,6 +6,65 @@ STR_CROSSPOINT: "CrossPoint"
+@@ -6,6 +6,69 @@ STR_CROSSPOINT: "CrossPoint"
  STR_BOOTING: "BOOTING"
  STR_SLEEPING: "SLEEPING"
  STR_ENTERING_SLEEP: "Going to sleep"
@@ -38106,6 +38106,10 @@ index 1c2f887..00e0af5 100644
 +STR_ANKI_PUSH_PARTIAL: "Most reviews uploaded; some skipped"
 +STR_ANKI_OFFLINE_DONE: "All cards reviewed. Upload when Anki is open on the Mac."
 +STR_ANKI_DECK_DONE: "Deck finished. Choose another deck or upload reviews."
++STR_ANKI_NEW_DAY: "New day - the whole batch is due again."
++STR_ANKI_PASS_FORMAT: "pass %u"
++STR_ANKI_DONE_TOMORROW: "All cards reviewed. Upload when Anki is open on the Mac, or come back tomorrow to loop through them again."
++STR_ANKI_LOG_FULL: "Review log is full. Upload before studying more."
 +STR_ANKI_QUESTION: "Question"
 +STR_ANKI_ANSWER: "Answer"
 +STR_ANKI_AGAIN: "Again"
@@ -38140,10 +38144,10 @@ index 1c2f887..00e0af5 100644
  STR_FILE_TRANSFER: "File Transfer"
  STR_SETTINGS_TITLE: "Settings"
 diff --git a/lib/I18n/translations/german.yaml b/lib/I18n/translations/german.yaml
-index 26f4fcf..4216f00 100644
+index 26f4fcf..71df04a 100644
 --- a/lib/I18n/translations/german.yaml
 +++ b/lib/I18n/translations/german.yaml
-@@ -6,6 +6,62 @@ STR_CROSSPOINT: "CrossPoint"
+@@ -6,6 +6,66 @@ STR_CROSSPOINT: "CrossPoint"
  STR_BOOTING: "STARTE"
  STR_SLEEPING: "STANDBY"
  STR_ENTERING_SLEEP: "Standby"
@@ -38173,6 +38177,10 @@ index 26f4fcf..4216f00 100644
 +STR_ANKI_PUSH_PARTIAL: "Meiste Bewertungen ok; einige übersprungen"
 +STR_ANKI_OFFLINE_DONE: "Alle Karten gelernt. Übertragen, wenn Anki auf dem Mac geöffnet ist."
 +STR_ANKI_DECK_DONE: "Stapel fertig. Anderen Stapel wählen oder Bewertungen übertragen."
++STR_ANKI_NEW_DAY: "Neuer Tag - alle Karten sind wieder fällig."
++STR_ANKI_PASS_FORMAT: "Durchgang %u"
++STR_ANKI_DONE_TOMORROW: "Alle Karten gelernt. Übertragen, wenn Anki auf dem Mac geöffnet ist, oder morgen wiederkommen."
++STR_ANKI_LOG_FULL: "Bewertungsprotokoll ist voll. Bitte zuerst übertragen."
 +STR_ANKI_QUESTION: "Frage"
 +STR_ANKI_ANSWER: "Antwort"
 +STR_ANKI_AGAIN: "Nochmal"
@@ -38206,6 +38214,39 @@ index 26f4fcf..4216f00 100644
  STR_BROWSE_FILES: "Durchsuchen"
  STR_FILE_TRANSFER: "Datentransfer"
  STR_SETTINGS_TITLE: "Einstellungen"
+diff --git a/lib/hal/HalClock.cpp b/lib/hal/HalClock.cpp
+index c793c9e..bcdd4df 100644
+--- a/lib/hal/HalClock.cpp
++++ b/lib/hal/HalClock.cpp
+@@ -39,6 +39,11 @@ bool HalClock::getTime(uint8_t& hour, uint8_t& minute) const {
+   return true;
+ }
+ 
++bool HalClock::getDateTime(Rtc::DateTime& out) const {
++  if (!_available) return false;
++  return _sdkRtc.now(out);
++}
++
+ bool HalClock::formatTime(char* buf, size_t bufSize, uint8_t utcOffsetQuarterHoursBiased, bool use12Hour) const {
+   if (bufSize < (use12Hour ? 9u : 6u)) return false;
+   uint8_t h, m;
+diff --git a/lib/hal/HalClock.h b/lib/hal/HalClock.h
+index 7fd2f6b..156c30f 100644
+--- a/lib/hal/HalClock.h
++++ b/lib/hal/HalClock.h
+@@ -27,6 +27,12 @@ class HalClock {
+   // Returns false if RTC is not available.
+   bool getTime(uint8_t& hour, uint8_t& minute) const;
+ 
++  // Full UTC wall-clock value straight from the RTC, uncached (getTime() only
++  // exposes hour/minute, and its 10s cache is aimed at the status bar redraw).
++  // Returns false when no RTC is present or the RTC reports its oscillator
++  // stopped -- i.e. the date is not trustworthy.
++  bool getDateTime(Rtc::DateTime& out) const;
++
+   // Format time into a caller-provided buffer.
+   // 24h mode produces "HH:MM" (needs >=6 bytes); 12h mode produces "H:MM AM"/"HH:MM PM" (needs >=9 bytes).
+   // utcOffsetQuarterHoursBiased: biased quarter-hour offset (48 = UTC+0, 0 = UTC-12, 104 = UTC+14).
 diff --git a/platformio.ini b/platformio.ini
 index e07c59d..835044c 100644
 --- a/platformio.ini
@@ -38511,10 +38552,10 @@ index 8d3c49e..c14d7a9 100644
    ScreenshotInfo getScreenshotInfo() const;
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..47e7746
+index 0000000..5fc1584
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,1965 @@
+@@ -0,0 +1,1988 @@
 +#include "AnkiActivity.h"
 +
 +#include "../../anki/AnkiFirmwareVersion.h"
@@ -39517,11 +39558,20 @@ index 0000000..47e7746
 +  } else {
 +    state = State::MENU;
 +    rebuildMenu();
-+    // Deep-sleep wake from a card: the queue and its cursor live in
-+    // AnkiStore's persisted session, so the current card is still the one
-+    // that was on screen. Fall back to the menu when the deck was finished
-+    // or cleared while the device slept.
-+    if (resumeReview && ANKI_STORE.hasBatch() && ANKI_STORE.hasRemainingCards()) {
++    if (ANKI_STORE.consumeRolloverFlag()) {
++      // AnkiStore::load() rebuilt every queue for a new day, so the cursor no
++      // longer points at whatever was on screen before. Say so and land on the
++      // menu -- resuming here would show one card's question with the next
++      // card's answer and grade the wrong card.
++      applyUiOrientation(false);
++      state = State::MESSAGE;
++      message = tr(STR_ANKI_NEW_DAY);
++      restartOnDismiss = false;
++    } else if (resumeReview && ANKI_STORE.hasBatch() && ANKI_STORE.hasRemainingCards()) {
++      // Deep-sleep wake from a card: the queue and its cursor live in
++      // AnkiStore's persisted session, so the current card is still the one
++      // that was on screen. Fall back to the menu when the deck was finished
++      // or cleared while the device slept.
 +      startReview();
 +      if (state == State::QUESTION && resumeOnAnswer) showAnswer();
 +    }
@@ -40018,7 +40068,12 @@ index 0000000..47e7746
 +  } else {
 +    applyUiOrientation(false);
 +    state = State::MESSAGE;
-+    message = tr(STR_ANKI_OFFLINE_DONE);
++    if (ANKI_STORE.reviewLogFull()) {
++      message = tr(STR_ANKI_LOG_FULL);
++    } else {
++      // Only promise tomorrow's pass when the RTC can actually tell us the date.
++      message = ANKI_STORE.currentDateStamp() != 0 ? tr(STR_ANKI_DONE_TOMORROW) : tr(STR_ANKI_OFFLINE_DONE);
++    }
 +    restartOnDismiss = false;
 +  }
 +  requestUpdate();
@@ -40113,8 +40168,17 @@ index 0000000..47e7746
 +  const auto& metrics = UITheme::getInstance().getMetrics();
 +  const int pageWidth = renderer.getScreenWidth();
 +  const int pageHeight = renderer.getScreenHeight();
++  // Once cards have resurfaced, which pass you are on matters more in that slot
++  // than the firmware version does.
++  char passLabel[24];
++  const char* headerDetail = ankiFirmwareVersionLabel();
++  if (ANKI_STORE.getPassIndex() > 0) {
++    snprintf(passLabel, sizeof(passLabel), tr(STR_ANKI_PASS_FORMAT),
++             static_cast<unsigned int>(ANKI_STORE.getPassIndex() + 1));
++    headerDetail = passLabel;
++  }
 +  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ANKI),
-+                 ankiFirmwareVersionLabel());
++                 headerDetail);
 +
 +  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
 +  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
@@ -40967,7 +41031,7 @@ index ab0a6c5..9ce8483 100644
      const auto& families = registry_->getFamilies();
 diff --git a/src/anki/AnkiFirmwareVersion.h b/src/anki/AnkiFirmwareVersion.h
 new file mode 100644
-index 0000000..600cc34
+index 0000000..67ea59d
 --- /dev/null
 +++ b/src/anki/AnkiFirmwareVersion.h
 @@ -0,0 +1,26 @@
@@ -40979,7 +41043,7 @@ index 0000000..600cc34
 +// xteink-anki package version (bump with RELEASE_NOTES / dist binary).
 +// CROSSPOINT_VERSION is set by PlatformIO (e.g. 1.4.1-anki-2.7.0 on gh_release).
 +#ifndef XTEINK_ANKI_FW_VERSION
-+#define XTEINK_ANKI_FW_VERSION "2.8.0"
++#define XTEINK_ANKI_FW_VERSION "2.9.0"
 +#endif
 +
 +// Label for Anki UI headers (static buffer — UI thread only).
@@ -41077,16 +41141,19 @@ index 0000000..41bf526
 +}  // namespace AnkiMdns
 diff --git a/src/anki/AnkiStore.cpp b/src/anki/AnkiStore.cpp
 new file mode 100644
-index 0000000..17b28ff
+index 0000000..bc343ae
 --- /dev/null
 +++ b/src/anki/AnkiStore.cpp
-@@ -0,0 +1,1324 @@
+@@ -0,0 +1,1641 @@
 +#include "AnkiStore.h"
 +
 +#include <ArduinoJson.h>
++#include <HalClock.h>
 +#include <HalStorage.h>
 +#include <Logging.h>
 +#include <ObfuscationUtils.h>
++
++#include "CrossPointSettings.h"
 +
 +#include <algorithm>
 +#include <cctype>
@@ -41200,6 +41267,33 @@ index 0000000..17b28ff
 +  }
 +  return text.empty() ? std::string("Anki") : text;
 +}
++// Days since 1970-01-01 for a proleptic Gregorian date. Howard Hinnant's
++// civil_from_days inverse -- plain integer maths so it does not depend on the
++// libc timezone state, which is only configured after an NTP sync in the
++// current boot (the RTC itself survives reboots, which is the whole point).
++int32_t daysFromCivil(int32_t year, uint32_t month, uint32_t day) {
++  year -= month <= 2;
++  const int32_t era = (year >= 0 ? year : year - 399) / 400;
++  const uint32_t yoe = static_cast<uint32_t>(year - era * 400);              // [0, 399]
++  const uint32_t doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1;  // [0, 365]
++  const uint32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;               // [0, 146096]
++  return era * 146097 + static_cast<int32_t>(doe) - 719468;
++}
++
++// Inverse of daysFromCivil(), packed straight into YYYYMMDD.
++uint32_t civilStampFromDays(int32_t days) {
++  days += 719468;
++  const int32_t era = (days >= 0 ? days : days - 146096) / 146097;
++  const uint32_t doe = static_cast<uint32_t>(days - era * 146097);          // [0, 146096]
++  const uint32_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
++  const int32_t year = static_cast<int32_t>(yoe) + era * 400;
++  const uint32_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);             // [0, 365]
++  const uint32_t mp = (5 * doy + 2) / 153;                                  // [0, 11]
++  const uint32_t day = doy - (153 * mp + 2) / 5 + 1;                        // [1, 31]
++  const uint32_t month = mp + (mp < 10 ? 3 : -9);                           // [1, 12]
++  return static_cast<uint32_t>(year + (month <= 2)) * 10000u + month * 100u + day;
++}
++
 +}  // namespace
 +
 +AnkiStore& AnkiStore::getInstance() {
@@ -41214,7 +41308,14 @@ index 0000000..17b28ff
 +  Storage.ensureDirectoryExists(SD_DUE_DIR);
 +  Storage.ensureDirectoryExists(SD_ANSWERS_DIR);
 +  if (!loadConfiguration(error)) return false;
-+  return loadSession(error);
++  if (!loadSession(error)) return false;
++  // Every route into Anki (cold boot, the menu, the deep-sleep resume) comes
++  // through load(), so this is the one place the day check has to live.
++  std::string rolloverError;
++  if (!applyDayRolloverIfDue(rolloverError) && !rolloverError.empty()) {
++    LOG_ERR("ANKI", "Could not start a new review pass: %s", rolloverError.c_str());
++  }
++  return true;
 +}
 +
 +bool AnkiStore::loadConfiguration(std::string& error) {
@@ -41345,6 +41446,9 @@ index 0000000..17b28ff
 +  cardCount = 0;
 +  reviewCount = 0;
 +  currentDeck = 0;
++  passIndex = 0;
++  dateStamp = 0;
++  rolloverJustHappened = false;
 +  decks.clear();
 +  lastReview.valid = false;
 +}
@@ -41433,6 +41537,10 @@ index 0000000..17b28ff
 +  cardCount = doc["card_count"] | static_cast<uint16_t>(0);
 +  reviewCount = doc["review_count"] | static_cast<uint16_t>(0);
 +  currentDeck = doc["current_deck"] | static_cast<uint16_t>(0);
++  // Absent in state written before resurfacing existed; 0 means "adopt today's
++  // date on the next check without resurfacing" (see applyDayRolloverIfDue()).
++  passIndex = doc["pass_index"] | static_cast<uint16_t>(0);
++  dateStamp = doc["date_stamp"] | static_cast<uint32_t>(0);
 +
 +  if (batchId.empty() || cardCount > MAX_CARDS || !Storage.exists(CARDS_PATH) || !Storage.exists(INDEX_PATH)) {
 +    error = "Local Anki batch is incomplete";
@@ -41534,6 +41642,7 @@ index 0000000..17b28ff
 +    return false;
 +  }
 +  if (currentDeck >= decks.size()) currentDeck = 0;
++  loadRoster();
 +  return true;
 +}
 +
@@ -41543,6 +41652,8 @@ index 0000000..17b28ff
 +  doc["card_count"] = cardCount;
 +  doc["review_count"] = reviewCount;
 +  doc["current_deck"] = currentDeck;
++  doc["pass_index"] = passIndex;
++  doc["date_stamp"] = dateStamp;
 +  JsonArray savedDecks = doc["decks"].to<JsonArray>();
 +  for (const DeckSession& deck : decks) {
 +    JsonObject deckObject = savedDecks.add<JsonObject>();
@@ -41656,6 +41767,15 @@ index 0000000..17b28ff
 +  std::string path = SD_ANSWERS_DIR;
 +  path += '/';
 +  path += safe;
++  // Later passes get their own file. The add-on's SD import derives the batch id
++  // from the filename stem and refuses a stem it has already applied, so reusing
++  // one name across days would make every pass after the first import a silent
++  // no-op. Zero-padded so a plain lexicographic listing stays in pass order.
++  if (passIndex > 0) {
++    char suffix[8];
++    snprintf(suffix, sizeof(suffix), "-p%02u", static_cast<unsigned>(passIndex));
++    path += suffix;
++  }
 +  path += ".ndjson";
 +  return path;
 +}
@@ -41865,6 +41985,7 @@ index 0000000..17b28ff
 +    Storage.remove(REVIEWS_PATH);
 +    Storage.remove(FLAGS_PATH);
 +    Storage.remove(STATE_PATH);
++    Storage.remove(ROSTER_PATH);
 +    Storage.remove(PULL_TEMP_PATH);
 +    Storage.remove(INDEX_TEMP_PATH);
 +    Storage.remove(PUSH_TEMP_PATH);
@@ -41879,6 +42000,7 @@ index 0000000..17b28ff
 +  Storage.remove(REVIEWS_PATH);
 +  Storage.remove(FLAGS_PATH);
 +  Storage.remove(STATE_PATH);
++  Storage.remove(ROSTER_PATH);
 +  Storage.remove(PUSH_TEMP_PATH);
 +  if (!Storage.rename(PULL_TEMP_PATH, CARDS_PATH) || !Storage.rename(INDEX_TEMP_PATH, INDEX_PATH)) {
 +    error = "Could not install downloaded Anki batch";
@@ -41894,6 +42016,15 @@ index 0000000..17b28ff
 +    deck.cursor = 0;
 +    deck.baseline = static_cast<uint16_t>(deck.queue.size());
 +    deck.completed = 0;
++    deck.roster = deck.queue;  // pull order; every card this deck owns
++  }
++  // A fresh pull is pass 0, anchored to today so the first rollover is tomorrow.
++  passIndex = 0;
++  dateStamp = currentDateStamp();
++  rolloverJustHappened = false;
++  if (!saveRoster()) {
++    error = "Could not save the local Anki deck roster";
++    return false;
 +  }
 +
 +  // Prefer the first deck that still has cards.
@@ -42161,18 +42292,33 @@ index 0000000..17b28ff
 +      bool tooLong = false;
 +      while (readLine(reviews, line, 128, tooLong)) {
 +        if (tooLong || line.empty()) continue;
-+        // card_id,ease,,duration_ms
-+        unsigned long long cardId = 0;
-+        unsigned ease = 0;
-+        unsigned long duration = 0;
-+        if (sscanf(line.c_str(), "%llu,%u,,%lu", &cardId, &ease, &duration) < 2) {
-+          // try with optional answered_at field empty variants
-+          if (sscanf(line.c_str(), "%llu,%u", &cardId, &ease) < 2) continue;
++        // card_id,ease,answered_at_ms,duration_ms -- the third column is empty
++        // when the device had no trustworthy clock, so split on ',' rather than
++        // trying to express "optionally empty field" in a scanf format.
++        const char* fields[4] = {nullptr, nullptr, nullptr, nullptr};
++        size_t fieldCount = 0;
++        size_t start = 0;
++        while (fieldCount < 4) {
++          const size_t comma = line.find(',', start);
++          fields[fieldCount++] = line.c_str() + start;
++          if (comma == std::string::npos) break;
++          line[comma] = '\0';  // in-place terminate; the line is rewritten each iteration
++          start = comma + 1;
 +        }
++        if (fieldCount < 2) continue;
++        const unsigned long long cardId = strtoull(fields[0], nullptr, 10);
++        const unsigned ease = static_cast<unsigned>(strtoul(fields[1], nullptr, 10));
++        const unsigned long long answeredAtMs = fieldCount >= 3 ? strtoull(fields[2], nullptr, 10) : 0;
++        const unsigned long duration = fieldCount >= 4 ? strtoul(fields[3], nullptr, 10) : 0;
 +        if (ease < 1 || ease > 4 || cardId == 0) continue;
-+        char item[96];
-+        const int n = snprintf(item, sizeof(item), "%s{\"card_id\":%llu,\"ease\":%u,\"duration_ms\":%lu}",
-+                               firstReview ? "" : ",", cardId, ease, duration);
++        char item[192];
++        const int n =
++            answeredAtMs
++                ? snprintf(item, sizeof(item),
++                           "%s{\"card_id\":%llu,\"ease\":%u,\"duration_ms\":%lu,\"answered_at_ms\":%llu}",
++                           firstReview ? "" : ",", cardId, ease, duration, answeredAtMs)
++                : snprintf(item, sizeof(item), "%s{\"card_id\":%llu,\"ease\":%u,\"duration_ms\":%lu}",
++                           firstReview ? "" : ",", cardId, ease, duration);
 +        if (n <= 0 || static_cast<size_t>(n) >= sizeof(item) ||
 +            out.write(item, static_cast<size_t>(n)) != static_cast<size_t>(n)) {
 +          reviews.close();
@@ -42241,6 +42387,10 @@ index 0000000..17b28ff
 +    error = "Invalid Anki review";
 +    return false;
 +  }
++  if (reviewCount >= MAX_REVIEW_ROWS) {
++    error = "Local Anki review log is full -- upload before studying more";
++    return false;
++  }
 +
 +  DeckSession* deck = currentDeckSession();
 +  if (!deck) {
@@ -42257,9 +42407,19 @@ index 0000000..17b28ff
 +    return false;
 +  }
 +
-+  char row[96];
-+  const int length = snprintf(row, sizeof(row), "%llu,%u,,%lu\n", static_cast<unsigned long long>(card.id),
-+                              static_cast<unsigned int>(ease), static_cast<unsigned long>(durationMs));
++  // card_id,ease,answered_at_ms,duration_ms -- answered_at stays empty when the
++  // RTC cannot be trusted, and the add-on then applies the review at push time
++  // as it always did. Stamping it matters once a batch spans several days: the
++  // reviews must land on the days they were actually made, not all at push.
++  const uint64_t answeredAtMs = nowMillisEpoch();
++  char row[128];
++  const int length =
++      answeredAtMs
++          ? snprintf(row, sizeof(row), "%llu,%u,%llu,%lu\n", static_cast<unsigned long long>(card.id),
++                     static_cast<unsigned int>(ease), static_cast<unsigned long long>(answeredAtMs),
++                     static_cast<unsigned long>(durationMs))
++          : snprintf(row, sizeof(row), "%llu,%u,,%lu\n", static_cast<unsigned long long>(card.id),
++                     static_cast<unsigned int>(ease), static_cast<unsigned long>(durationMs));
 +  if (length <= 0 || static_cast<size_t>(length) >= sizeof(row) ||
 +      reviews.write(row, static_cast<size_t>(length)) != static_cast<size_t>(length)) {
 +    error = "Could not write the local Anki review log";
@@ -42269,11 +42429,20 @@ index 0000000..17b28ff
 +  reviews.close();
 +
 +  {
-+    char eventLine[128];
-+    const int n = snprintf(eventLine, sizeof(eventLine),
-+                           "{\"type\":\"review\",\"card_id\":\"%llu\",\"ease\":%u,\"duration_ms\":%lu}",
-+                           static_cast<unsigned long long>(card.id), static_cast<unsigned int>(ease),
-+                           static_cast<unsigned long>(durationMs));
++    // Wide enough for the answered_at_ms field: snprintf truncation here is
++    // silently dropped by appendAnswerEvent(), so the buffer must not be tight.
++    char eventLine[224];
++    const int n =
++        answeredAtMs
++            ? snprintf(eventLine, sizeof(eventLine),
++                       "{\"type\":\"review\",\"card_id\":\"%llu\",\"ease\":%u,\"duration_ms\":%lu,"
++                       "\"answered_at_ms\":%llu}",
++                       static_cast<unsigned long long>(card.id), static_cast<unsigned int>(ease),
++                       static_cast<unsigned long>(durationMs), static_cast<unsigned long long>(answeredAtMs))
++            : snprintf(eventLine, sizeof(eventLine),
++                       "{\"type\":\"review\",\"card_id\":\"%llu\",\"ease\":%u,\"duration_ms\":%lu}",
++                       static_cast<unsigned long long>(card.id), static_cast<unsigned int>(ease),
++                       static_cast<unsigned long>(durationMs));
 +    if (n > 0 && static_cast<size_t>(n) < sizeof(eventLine)) appendAnswerEvent(eventLine);
 +  }
 +
@@ -42315,10 +42484,17 @@ index 0000000..17b28ff
 +    error = "Invalid Anki deck";
 +    return false;
 +  }
-+  // Drop it from today's queue only; no review is logged and progress is
++  // Drop it from this batch entirely -- queue for the current pass, roster so
++  // later passes do not resurface it. No review is logged and progress is
 +  // unaffected. It stays due server-side and simply comes back on the next pull.
++  const uint16_t buriedCardIndex = deck->queue[deck->cursor];
 +  deck->queue.erase(deck->queue.begin() + deck->cursor);
++  deck->roster.erase(std::remove(deck->roster.begin(), deck->roster.end(), buriedCardIndex), deck->roster.end());
 +  lastReview.valid = false;
++  if (!saveRoster()) {
++    error = "Could not save the local Anki deck roster";
++    return false;
++  }
 +  return saveSession(error);
 +}
 +
@@ -42348,53 +42524,258 @@ index 0000000..17b28ff
 +}
 +
 +bool AnkiStore::removeLastReviewLogLine(std::string& error) {
-+  // Rewrite REVIEWS_PATH without its last line (mirrors writeFlagOverride's
-+  // read-all/rewrite approach; the log stays small enough for this to be cheap).
++  // Copy REVIEWS_PATH to a temp file, stopping before its last line, then swap.
++  // Deliberately streaming: with resurfacing the log runs to thousands of rows,
++  // and reading it all into a vector<std::string> to pop one entry would be the
++  // largest allocation in the Anki path by a wide margin.
 +  if (!Storage.exists(REVIEWS_PATH)) {
 +    error.clear();
 +    return true;
 +  }
-+  std::vector<std::string> lines;
-+  HalFile in;
-+  if (Storage.openFileForRead("ANKI", REVIEWS_PATH, in)) {
-+    std::string line;
-+    bool tooLong = false;
-+    while (readLine(in, line, 128, tooLong)) {
-+      if (tooLong || line.empty()) continue;
-+      lines.push_back(line);
++
++  // Byte offset where the final line starts; everything before it is kept.
++  size_t keepBytes = 0;
++  {
++    HalFile in;
++    if (!Storage.openFileForRead("ANKI", REVIEWS_PATH, in)) {
++      error = "Could not read the local Anki review log";
++      return false;
++    }
++    // Offsets just past the two most recent newlines, i.e. the starts of the
++    // two most recent lines.
++    size_t lastLineStart = 0;
++    size_t previousLineStart = 0;
++    size_t offset = 0;
++    bool endsWithNewline = false;
++    uint8_t buffer[256];
++    int n = 0;
++    while ((n = in.read(buffer, sizeof(buffer))) > 0) {
++      for (int i = 0; i < n; i++) {
++        offset++;
++        endsWithNewline = buffer[i] == '\n';
++        if (endsWithNewline) {
++          previousLineStart = lastLineStart;
++          lastLineStart = offset;
++        }
++      }
 +    }
 +    in.close();
++    // A well-formed log ends with a newline, so the trailing row starts at the
++    // second-to-last newline. Tolerate a torn final line (no newline) too.
++    keepBytes = endsWithNewline ? previousLineStart : lastLineStart;
 +  }
-+  if (!lines.empty()) lines.pop_back();
 +
-+  Storage.remove(REVIEWS_PATH);
-+  if (lines.empty()) {
++  if (keepBytes == 0) {
++    Storage.remove(REVIEWS_PATH);
 +    error.clear();
 +    return true;
 +  }
-+  HalFile out = Storage.open(REVIEWS_PATH, O_WRONLY | O_CREAT | O_TRUNC);
++
++  HalFile in;
++  if (!Storage.openFileForRead("ANKI", REVIEWS_PATH, in)) {
++    error = "Could not read the local Anki review log";
++    return false;
++  }
++  Storage.remove(REVIEWS_TEMP_PATH);
++  HalFile out = Storage.open(REVIEWS_TEMP_PATH, O_WRONLY | O_CREAT | O_TRUNC);
 +  if (!out) {
++    in.close();
 +    error = "Could not rewrite the local Anki review log";
 +    return false;
 +  }
-+  for (const auto& l : lines) {
-+    const std::string row = l + "\n";
-+    if (out.write(row.data(), row.size()) != row.size()) {
++  uint8_t buffer[256];
++  size_t copied = 0;
++  bool ok = true;
++  while (copied < keepBytes) {
++    const size_t want = std::min(sizeof(buffer), keepBytes - copied);
++    const int n = in.read(buffer, want);
++    if (n <= 0) break;
++    if (out.write(buffer, static_cast<size_t>(n)) != static_cast<size_t>(n)) {
++      ok = false;
++      break;
++    }
++    copied += static_cast<size_t>(n);
++  }
++  in.close();
++  out.flush();
++  out.close();
++  if (!ok || copied != keepBytes) {
++    Storage.remove(REVIEWS_TEMP_PATH);
++    error = "Could not rewrite the local Anki review log";
++    return false;
++  }
++  Storage.remove(REVIEWS_PATH);
++  if (!Storage.rename(REVIEWS_TEMP_PATH, REVIEWS_PATH)) {
++    error = "Could not rewrite the local Anki review log";
++    return false;
++  }
++  error.clear();
++  return true;
++}
++
++uint32_t AnkiStore::currentDateStamp() const {
++  Rtc::DateTime utc;
++  // now() is false when the board has no RTC, or when the PCF8563 reports its
++  // oscillator stopped -- i.e. it was never set or lost power. Either way the
++  // date cannot be trusted, and resurfacing stays switched off.
++  if (!halClock.getDateTime(utc)) return 0;
++  if (utc.year < 2024) return 0;  // RTC present but obviously never synced
++
++  // The RTC holds UTC (HalClock::syncFromNTP() sets it from gmtime), so shift by
++  // the user's offset to get their calendar date. clockUtcOffsetQ is biased:
++  // 48 = UTC+0, one step = 15 minutes.
++  uint8_t offsetQ = SETTINGS.clockUtcOffsetQ;
++  if (offsetQ > 104) offsetQ = 48;  // same clamp HalClock::formatTime() applies
++  const int32_t offsetSeconds = (static_cast<int32_t>(offsetQ) - 48) * 15 * 60;
++
++  const int32_t utcDays = daysFromCivil(utc.year, utc.month, utc.day);
++  const int32_t secondsOfDay = static_cast<int32_t>(utc.hour) * 3600 + static_cast<int32_t>(utc.minute) * 60 +
++                               static_cast<int32_t>(utc.second) + offsetSeconds;
++  // Floor-divide so a negative offset rolls back into the previous day.
++  int32_t dayShift = secondsOfDay / 86400;
++  if (secondsOfDay < 0 && secondsOfDay % 86400 != 0) dayShift--;
++  return civilStampFromDays(utcDays + dayShift);
++}
++
++uint64_t AnkiStore::nowMillisEpoch() const {
++  Rtc::DateTime utc;
++  if (!halClock.getDateTime(utc) || utc.year < 2024) return 0;
++  const int64_t days = daysFromCivil(utc.year, utc.month, utc.day);
++  const int64_t seconds = days * 86400 + static_cast<int64_t>(utc.hour) * 3600 +
++                          static_cast<int64_t>(utc.minute) * 60 + static_cast<int64_t>(utc.second);
++  if (seconds <= 0) return 0;
++  return static_cast<uint64_t>(seconds) * 1000ULL;
++}
++
++bool AnkiStore::consumeRolloverFlag() {
++  const bool value = rolloverJustHappened;
++  rolloverJustHappened = false;
++  return value;
++}
++
++bool AnkiStore::applyDayRolloverIfDue(std::string& error) {
++  error.clear();
++  if (!hasBatch() || decks.empty()) return false;
++
++  const uint32_t today = currentDateStamp();
++  if (today == 0) return false;  // no usable RTC: behave exactly as before
++
++  if (dateStamp == 0) {
++    // State from a pre-resurfacing build, or the RTC only became usable partway
++    // through this batch. Anchor to today; do not resurface on the strength of
++    // a date we never actually recorded.
++    dateStamp = today;
++    saveSession(error);  // best effort: nothing resurfaced either way
++    return false;
++  }
++  if (today <= dateStamp) return false;  // same day, or the clock moved backwards
++  if (reviewLogFull()) return false;     // upload before piling on more reviews
++
++  for (DeckSession& deck : decks) {
++    deck.queue = deck.roster;  // every card again, in pull order, buried excluded
++    deck.cursor = 0;
++    deck.baseline = static_cast<uint16_t>(deck.queue.size());
++    deck.completed = 0;
++  }
++  dateStamp = today;
++  passIndex++;
++  // The undo snapshot points at the previous pass's queue, and undoing would
++  // also strip a review logged on an earlier day. It cannot cross a pass.
++  lastReview.valid = false;
++  currentDeck = 0;
++  for (uint16_t i = 0; i < decks.size(); i++) {
++    if (decks[i].remaining() > 0) {
++      currentDeck = i;
++      break;
++    }
++  }
++  rolloverJustHappened = true;
++  LOG_INF("ANKI", "New review pass %u for batch %s (%lu)", static_cast<unsigned int>(passIndex), batchId.c_str(),
++          static_cast<unsigned long>(today));
++  return saveSession(error);
++}
++
++bool AnkiStore::saveRoster() const {
++  Storage.remove(ROSTER_PATH);
++  HalFile out = Storage.open(ROSTER_PATH, O_WRONLY | O_CREAT | O_TRUNC);
++  if (!out) return false;
++  const uint16_t deckCount = static_cast<uint16_t>(decks.size());
++  if (out.write(&deckCount, sizeof(deckCount)) != sizeof(deckCount)) {
++    out.close();
++    return false;
++  }
++  for (const DeckSession& deck : decks) {
++    const uint16_t count = static_cast<uint16_t>(deck.roster.size());
++    if (out.write(&count, sizeof(count)) != sizeof(count)) {
 +      out.close();
-+      error = "Could not rewrite the local Anki review log";
 +      return false;
++    }
++    for (const uint16_t cardIndex : deck.roster) {
++      if (out.write(&cardIndex, sizeof(cardIndex)) != sizeof(cardIndex)) {
++        out.close();
++        return false;
++      }
 +    }
 +  }
 +  out.flush();
 +  out.close();
-+  error.clear();
 +  return true;
++}
++
++void AnkiStore::loadRoster() {
++  bool usable = false;
++  HalFile in;
++  if (Storage.exists(ROSTER_PATH) && Storage.openFileForRead("ANKI", ROSTER_PATH, in)) {
++    uint16_t deckCount = 0;
++    if (in.read(&deckCount, sizeof(deckCount)) == static_cast<int>(sizeof(deckCount)) &&
++        deckCount == decks.size()) {
++      usable = true;
++      for (DeckSession& deck : decks) {
++        uint16_t count = 0;
++        if (in.read(&count, sizeof(count)) != static_cast<int>(sizeof(count)) || count > cardCount) {
++          usable = false;
++          break;
++        }
++        deck.roster.clear();
++        deck.roster.reserve(count);
++        for (uint16_t i = 0; i < count; i++) {
++          uint16_t cardIndex = 0;
++          if (in.read(&cardIndex, sizeof(cardIndex)) != static_cast<int>(sizeof(cardIndex)) ||
++              cardIndex >= cardCount) {
++            usable = false;
++            break;
++          }
++          deck.roster.push_back(cardIndex);
++        }
++        if (!usable) break;
++      }
++    }
++    in.close();
++  }
++  if (usable) return;
++
++  // No sidecar (state written before resurfacing existed) or it did not match
++  // this batch: seed each roster from what is still queued. Cards already graded
++  // in that session will not come back on the first rollover -- a one-time cost
++  // that beats refusing to load an otherwise healthy batch.
++  LOG_INF("ANKI", "Rebuilding the Anki deck roster from the current queues");
++  std::vector<bool> seen(cardCount, false);
++  for (DeckSession& deck : decks) {
++    deck.roster.clear();
++    for (const uint16_t cardIndex : deck.queue) {
++      if (cardIndex >= cardCount || seen[cardIndex]) continue;
++      seen[cardIndex] = true;
++      deck.roster.push_back(cardIndex);
++    }
++  }
++  saveRoster();
 +}
 +
 +bool AnkiStore::clearSession(std::string& error) {
 +  bool ok = true;
 +  for (const char* path : {STATE_PATH, CARDS_PATH, INDEX_PATH, REVIEWS_PATH, FLAGS_PATH, PUSH_TEMP_PATH,
-+                           PULL_TEMP_PATH, INDEX_TEMP_PATH}) {
++                           PULL_TEMP_PATH, INDEX_TEMP_PATH, ROSTER_PATH,
++                           REVIEWS_TEMP_PATH}) {
 +    if (Storage.exists(path) && !Storage.remove(path)) ok = false;
 +  }
 +  resetSessionState();
@@ -42407,10 +42788,10 @@ index 0000000..17b28ff
 +}
 diff --git a/src/anki/AnkiStore.h b/src/anki/AnkiStore.h
 new file mode 100644
-index 0000000..9472ee7
+index 0000000..f1b11a4
 --- /dev/null
 +++ b/src/anki/AnkiStore.h
-@@ -0,0 +1,222 @@
+@@ -0,0 +1,268 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -42515,6 +42896,24 @@ index 0000000..9472ee7
 +  bool undoLastReview(std::string& error);
 +  bool clearSession(std::string& error);
 +
++  // Local calendar date as YYYYMMDD, or 0 when the RTC is absent or its time is
++  // not trustworthy (oscillator stopped / never set). Date only on purpose:
++  // resurfacing needs "is it a different day", not a wall clock.
++  uint32_t currentDateStamp() const;
++  // If the local date moved on since the current pass started, rebuild every
++  // deck's queue from its roster so the whole batch is due again, and bump
++  // passIndex. Returns true only when a new pass actually started. A device
++  // with no usable RTC is a silent no-op -- reviewing then behaves exactly as
++  // it did before resurfacing existed.
++  bool applyDayRolloverIfDue(std::string& error);
++  // One-shot read of the "a new pass just started" flag (RAM only): the review
++  // UI uses it to show a notice instead of resuming a card that has moved.
++  bool consumeRolloverFlag();
++  uint16_t getPassIndex() const { return passIndex; }
++  // True once the review log is at MAX_REVIEW_ROWS. Grading still works; only
++  // starting a *new* pass is blocked, so nobody is cut off mid-card.
++  bool reviewLogFull() const { return reviewCount >= MAX_REVIEW_ROWS; }
++
 +  // Build JSON push body (reviews + dirty flags) to PUSH_TEMP_PATH for streaming upload.
 +  bool buildPushJson(std::string& error) const;
 +
@@ -42542,6 +42941,13 @@ index 0000000..9472ee7
 +    std::string id;
 +    std::string name;
 +    std::vector<uint16_t> queue;
++    // Every card index this deck owns, in pull order, minus buried cards.
++    // queue is consumed in place, so this is the only record of what the deck
++    // held once cards have been graded -- it is what a new pass rebuilds from.
++    // Persisted in ROSTER_PATH, not in the state JSON: saveSession() runs on
++    // every grade and doubling that document is not worth it for data that
++    // only changes on install / bury / rollover.
++    std::vector<uint16_t> roster;
 +    uint16_t cursor = 0;
 +    // Progress UI: baseline = cards at pull; completed only when not requeued
 +    // (Again / Hard-on-learning re-insert and must not fill the progress bar).
@@ -42573,8 +42979,14 @@ index 0000000..9472ee7
 +  static constexpr const char* INDEX_PATH = "/.crosspoint/anki-index.bin";
 +  static constexpr const char* INDEX_TEMP_PATH = "/.crosspoint/anki-index.tmp";
 +  static constexpr const char* REVIEWS_PATH = "/.crosspoint/anki-reviews.csv";
++  static constexpr const char* ROSTER_PATH = "/.crosspoint/anki-roster.bin";
++  static constexpr const char* REVIEWS_TEMP_PATH = "/.crosspoint/anki-reviews.tmp";
 +  static constexpr size_t MAX_CARD_LINE_BYTES = 16384;
 +  static constexpr uint16_t MAX_CARDS = 1000;
++  // Ceiling on the local review log. Resurfacing makes it grow once per card
++  // per day, and the whole log is streamed into a single push body; reviewCount
++  // is also a uint16_t, so this has to stay well clear of 65535 regardless.
++  static constexpr uint16_t MAX_REVIEW_ROWS = 4000;
 +  static constexpr uint16_t MAX_DECKS = 64;
 +  static constexpr size_t MAX_DECK_ID_CHARS = 32;
 +  static constexpr size_t MAX_DECK_NAME_CHARS = 64;
@@ -42584,6 +42996,16 @@ index 0000000..9472ee7
 +  uint8_t clampFlag(int value) const;
 +  // Drops the last line of REVIEWS_PATH (the row recordReview() just appended).
 +  bool removeLastReviewLogLine(std::string& error);
++  // Epoch milliseconds for a review's answered_at, or 0 when the RTC is not
++  // trustworthy -- callers then leave the field empty and the add-on falls back
++  // to applying the review at push time, as it always did.
++  uint64_t nowMillisEpoch() const;
++  bool saveRoster() const;
++  // Fills each deck's roster from ROSTER_PATH. When the file is missing (state
++  // written by a pre-resurfacing build) each roster is seeded from what is left
++  // in that deck's queue -- cards already graded in that session are lost to the
++  // first rollover, which is an acceptable one-time upgrade cost.
++  void loadRoster();
 +
 +  // Full path of SD_DUE_DIR's lexicographically-newest *.ndjson, or empty if
 +  // the folder has none. Add-on export filenames are timestamp-prefixed (see
@@ -42619,6 +43041,11 @@ index 0000000..9472ee7
 +  uint16_t cardCount = 0;
 +  uint16_t reviewCount = 0;
 +  uint16_t currentDeck = 0;
++  // 0 = the pass the pull itself created; incremented once per day rollover.
++  uint16_t passIndex = 0;
++  // YYYYMMDD the current pass belongs to; 0 = no usable RTC when it started.
++  uint32_t dateStamp = 0;
++  bool rolloverJustHappened = false;  // RAM only, consumed by the review UI
 +  std::vector<DeckSession> decks;
 +  LastReviewUndo lastReview;
 +  static const std::string EMPTY_DECK_NAME;

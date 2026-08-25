@@ -146,6 +146,21 @@ class ParsePushPayloadTests(unittest.TestCase):
         self.assertEqual(batch.reviews[0].ease, 4)
         self.assertEqual(batch.reviews[0].duration_ms, 900)
 
+    def test_csv_matches_the_rows_the_device_writes(self):
+        # AnkiStore::recordReview() writes "card_id,ease,answered_at_ms,duration"
+        # when the RTC is usable and leaves the third column empty when it is
+        # not. Both shapes reach /push verbatim, so pin them here.
+        body = b"123,3,1755000000000,4200\n124,1,,900\n"
+
+        batch = parse_push_payload(body, "text/csv", header_batch_id="pull-1")
+
+        stamped, unstamped = batch.reviews
+        self.assertEqual(stamped.card_id, 123)
+        self.assertEqual(stamped.answered_at_ms, 1755000000000)
+        self.assertEqual(stamped.duration_ms, 4200)
+        self.assertIsNone(unstamped.answered_at_ms)
+        self.assertEqual(unstamped.duration_ms, 900)
+
     def test_csv_without_id_gets_stable_hash(self):
         body = b"1700000000000,3\n"
 
@@ -324,6 +339,50 @@ class ParseAnswersNdjsonTests(unittest.TestCase):
         reviews, flags = parse_answers_ndjson(data)
         self.assertEqual(reviews, ())
         self.assertEqual(flags, ())
+
+    def test_answered_at_is_preserved(self):
+        # A batch reviewed offline over several days carries one review per
+        # card per day; each has to land on the day it was actually answered.
+        data = (
+            b'{"type":"review","card_id":"7","ease":3,"duration_ms":100,'
+            b'"answered_at_ms":1755000000000}\n'
+            b'{"type":"review","card_id":"7","ease":1,"duration_ms":200,'
+            b'"answered_at_ms":1755086400000}\n'
+        )
+        reviews, _ = parse_answers_ndjson(data)
+        self.assertEqual([r.card_id for r in reviews], [7, 7])
+        self.assertEqual(
+            [r.answered_at_ms for r in reviews],
+            [1755000000000, 1755086400000],
+        )
+
+    def test_answered_at_absent_or_empty_is_none(self):
+        # What a device with no usable RTC writes.
+        data = (
+            b'{"type":"review","card_id":"1","ease":3,"duration_ms":1}\n'
+            b'{"type":"review","card_id":"2","ease":3,"duration_ms":1,'
+            b'"answered_at_ms":""}\n'
+        )
+        reviews, _ = parse_answers_ndjson(data)
+        self.assertEqual(len(reviews), 2)
+        self.assertIsNone(reviews[0].answered_at_ms)
+        self.assertIsNone(reviews[1].answered_at_ms)
+
+    def test_seconds_precision_answered_at_is_scaled(self):
+        data = b'{"type":"review","card_id":"1","ease":3,"answered_at_ms":1755000000}\n'
+        reviews, _ = parse_answers_ndjson(data)
+        self.assertEqual(reviews[0].answered_at_ms, 1755000000000)
+
+    def test_bad_answered_at_skips_only_its_own_line(self):
+        # _timestamp_ms raises ProtocolError, which is not a ValueError; if that
+        # escapes, one torn timestamp costs every other review in the file.
+        data = (
+            b'{"type":"review","card_id":"1","ease":3,"answered_at_ms":"garbage"}\n'
+            b'{"type":"review","card_id":"2","ease":3,"answered_at_ms":0}\n'
+            b'{"type":"review","card_id":"3","ease":3,"duration_ms":50}\n'
+        )
+        reviews, _ = parse_answers_ndjson(data)
+        self.assertEqual([r.card_id for r in reviews], [3])
 
 
 if __name__ == "__main__":

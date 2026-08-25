@@ -1,3 +1,60 @@
+# v2.9.0 — keep studying offline: the batch comes back each day
+
+## Firmware
+
+A pulled batch was a single pass. Once you had walked each deck's queue to the
+end, the device was done until the next pull — so a week away from Wi-Fi meant
+one day of study and six idle days.
+
+- **Cards resurface daily:** when the local calendar date moves on, every deck's
+  queue is rebuilt from the cards the pull gave it, and you loop through the
+  whole batch again. Uploading reviews ends the loop, as it always did — the
+  next pull starts a fresh batch.
+- Within a pass nothing changes: **Again** and **Hard** on a learning card
+  re-queue exactly as before.
+- **Every answer is kept.** Three days offline means three reviews per card in
+  the push, not one. That is the point — Anki's scheduler and FSRS get the whole
+  history rather than only your last verdict.
+- **Reviews now carry the time they were given** (`answered_at`), read from the
+  device's RTC. A Tuesday pass lands in Anki as Tuesday instead of collapsing
+  into the moment you pushed. Nothing changes on a device whose clock has never
+  been synced: the field stays empty and Anki applies at push time, exactly as
+  before — and so does resurfacing, which stays switched off there.
+- **Buried cards stay buried** for the rest of the batch, not just the current
+  pass. They come back with the next pull.
+- The Anki menu header shows which pass you are on once cards have resurfaced.
+- **Local review log is capped at 4000 rows.** At the cap the device asks you to
+  upload before starting another pass; grading the current pass still works.
+
+Two supporting fixes this required:
+
+- Each pass writes its own `system-answers/<batch>-pNN.ndjson`. The add-on's SD
+  import keys its duplicate guard on the filename stem, so reusing one name
+  across days would have made every pass after the first import a silent no-op.
+- Undoing a review no longer reads the whole review log into memory to drop one
+  line — with a multi-day log that was the largest allocation in the Anki path.
+
+## Add-on
+
+- `parse_answers_ndjson()` now keeps `answered_at`, so the SD-card import path
+  backdates reviews the same way a network push does.
+- SD import applies a batch's passes in pass order. Plain filename sorting put
+  `<batch>-p01` ahead of `<batch>`, which would have replayed a card's reviews
+  out of order.
+- `max_reviews_per_push` 500 → 5000 and `max_request_bytes` 256 KB → 2 MB, sized
+  for a batch reviewed over several days.
+
+## Known limits
+
+- Resurfacing needs the device RTC to be set (**Settings → Clock**, NTP sync
+  over Wi-Fi). Without it the loop never starts and reviews carry no timestamp.
+- The day boundary is local **midnight**, not Anki's 4am rollover. Crossing it
+  mid-session is not disruptive: the new pass appears the next time you open
+  Anki, never underneath the card you are looking at.
+- Re-answering a card that Anki has already scheduled forward is an early
+  review. Drilling a card daily for a week will land it on a different interval
+  than leaving it alone would have — that is what asking for the loop means.
+
 # v2.8.0 — wake straight back into the card you were on
 
 ## Firmware

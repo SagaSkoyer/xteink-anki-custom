@@ -22,8 +22,33 @@ Working for daily use on Xteink (X3 tested) + Anki Desktop (macOS tested):
 - **XFD converter** on pull: HTML/Markdown tables, lists, headings → e-ink plain text
 - **Bold on e-ink (Phase B):** `**…**` / `<b>` → mixed bold/regular runs on the device
 - **Sleep resumes the card:** waking from sleep during a review reopens that same card (hold **Back** while waking for the home screen)
+- **Daily loop offline:** the pulled batch becomes due again each local day, so a week without Wi-Fi is a week of study (see **Daily loop** below)
 
 Known limits of the offline model: learning steps after Again/Hard are re-queued **locally** on the device; final intervals always come from Anki’s scheduler after push.
+
+### Daily loop
+
+Without a sync, the device would otherwise run out of cards after one pass. So
+each local day the whole pulled batch is made due again and you loop through it
+once more:
+
+- **Every card comes back**, however you graded it last time. Buried cards do
+  not — they stay out until the next pull.
+- **Every answer is kept and pushed.** Three days offline means three reviews
+  per card reach Anki, each stamped with the day you actually gave it, so the
+  scheduler and FSRS see the real history.
+- **Uploading ends the loop** — the batch is cleared and the next pull starts a
+  fresh one. The loop is what fills the gap *between* syncs.
+- Needs the device clock: **Settings → Clock**, synced over Wi-Fi once. Without
+  it nothing resurfaces and reviews carry no timestamp. The boundary is local
+  midnight; a new pass never appears underneath the card you are looking at, only
+  the next time you open Anki.
+- The device holds up to 4000 local reviews; past that it asks you to upload
+  before starting another pass.
+
+Worth knowing: re-answering a card Anki has already scheduled forward is an
+early review. Drilling a card daily for a week will leave it on a different
+interval than letting it wait would have. That is the trade the loop makes.
 
 ## Quick start
 
