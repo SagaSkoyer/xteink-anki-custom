@@ -17,11 +17,6 @@ Upstream base: <https://github.com/crosspoint-reader/crosspoint-reader>
 - Commit: `6a501bba544d9e80598811dbdf2134d1bcb1ebd2`
 - Reported firmware version: `1.6.0rc-anki-2.9.0`
 
-> **The committed `.bin` is still the 2.8.0 build.** The 2.9.0 daily-loop patch
-> has not been compiled into an image yet — run `./build.sh` and refresh both
-> lines of `SHA256SUMS` before publishing a release. The patch checksum below is
-> current; the image checksum is for the older image.
-
 ## Device compatibility
 
 Upstream's `gh_release` environment compiles `FREEINK_DEVICE_X4` and
@@ -83,7 +78,7 @@ glyphs before copying the image here.
   medium size) and deliberately skip the Arabic presentation forms — UI_18 is
   never used for menus, and those forms cost roughly 700 KB of flash the app
   partition cannot spare.
-- Build footprint: RAM 16.8% (54,996 B static), Flash 78.5% (5,147,847 B of the
+- Build footprint: RAM 16.8% (55,004 B static), Flash 78.6% (5,153,053 B of the
   6,553,600-byte app partition — about 1.34 MB free).
 - Verified by rebuilding from a fresh clone with only the committed patch: same
   size and same flash figure, differing only in a handful of bytes in the ESP
