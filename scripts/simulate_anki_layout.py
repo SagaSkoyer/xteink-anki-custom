@@ -2,7 +2,7 @@
 """ASCII layout simulation for Xteink Anki screens.
 
 Covers portrait (480×800) and landscape (800×480):
-  - card body (no header: cards are text only, clipped — no paging)
+  - card body (no header: a status strip, then text only, clipped — no paging)
   - Anki menu with every deck listed + progress subtitle
   - grade button row
 
@@ -23,6 +23,14 @@ HINT_H = 40
 LINE_H_UI12 = 28
 LINE_H_UI10 = 22  # progress / front-preview font
 LINE_H_CARD = 30  # UI_12 + spacing
+# Card status strip (top of the content area): flag pennant left, battery right.
+BATTERY_H = 12
+BATTERY_ICON_TOP = 6  # drawBatteryLeft() drops the icon below the percentage text
+FLAG_H = 16
+STATUS_PAD = 4
+# LINE_H_UI10 is the charge percentage's line box: drawn from the strip's top
+# down, and taller than the icon on every current theme.
+STATUS_STRIP_H = max(BATTERY_ICON_TOP + BATTERY_H, FLAG_H, LINE_H_UI10) + STATUS_PAD
 BAR_H = 8
 AVG_CHAR_W_LATIN = 7.2
 AVG_CHAR_W_GREEK = 8.0
@@ -91,6 +99,7 @@ class CardMetrics:
     screen_h: int
     landscape: bool
     cols: int
+    status_top: int
     content_top: int
     content_bottom: int
     available: int
@@ -98,9 +107,12 @@ class CardMetrics:
 
 
 def card_metrics(screen_w: int, screen_h: int, *, landscape: bool) -> CardMetrics:
-    """Mirror AnkiActivity::renderCard: no header, body starts at the safe-area top."""
+    """Mirror AnkiActivity::renderCard: no header, a status strip, then the body."""
     cols = max(20, int((screen_w - 2 * SIDE_PAD) / AVG_CHAR_W_LATIN))
-    content_top = 2 if landscape else 4
+    status_top = 2 if landscape else 4
+    # The strip is reserved whether or not the card is flagged, so toggling the
+    # flag never reflows the text under it.
+    content_top = status_top + STATUS_STRIP_H
     footer = 4 if landscape else (HINT_H + 8)
     content_bottom = screen_h - footer
     available = max(1, content_bottom - content_top)
@@ -109,6 +121,7 @@ def card_metrics(screen_w: int, screen_h: int, *, landscape: bool) -> CardMetric
         screen_h=screen_h,
         landscape=landscape,
         cols=cols,
+        status_top=status_top,
         content_top=content_top,
         content_bottom=content_bottom,
         available=available,
@@ -134,13 +147,13 @@ def simulate_card(
     per_page = max(1, m.max_lines // scale)
     shown, clipped = lines[:per_page], max(0, len(lines) - per_page)
 
-    body_lines: list[str] = []
+    # Status strip: flag pennant top-left (only when flagged), battery top-right.
+    battery = "[###] 87%"
+    status = ("|>" if flagged else "  ").ljust(max(0, cols - len(battery))) + battery
+
+    body_lines: list[str] = [status]
     for i in range(per_page):
-        line = shown[i] if i < len(shown) else ""
-        # Flag pennant sits in the bottom-right corner of the content area.
-        if flagged and i == per_page - 1:
-            line = line[: cols - 2].ljust(cols - 2) + "|>"
-        body_lines.append(line)
+        body_lines.append(shown[i] if i < len(shown) else "")
     body_lines.append("-" * cols)
     body_lines.append("Nochmal / Gut = Seitentasten" if answer else "Umdrehen = Seitentasten")
     body_lines.append("Zurück | Rückgängig | Flag | Zurückstellen")
@@ -148,7 +161,8 @@ def simulate_card(
     out = box(body_lines, cols)
     out += (
         f"\n  [metrics] {'LANDSCAPE' if landscape else 'PORTRAIT'} {screen_w}x{screen_h}  "
-        f"content_top={m.content_top}  avail={m.available}px  lines={per_page}  scale={scale}  "
+        f"status_top={m.status_top}  content_top={m.content_top}  avail={m.available}px  "
+        f"lines={per_page}  scale={scale}  "
         f"clipped={clipped}  flag={flagged}  greek={has_greek(body)}"
     )
     assert m.content_top < m.content_bottom
@@ -232,14 +246,17 @@ def main() -> None:
     print(simulate_card("Antwort", "ἀλήθεια", flagged=True, landscape=True, scale=2))
     print()
 
-    # Geometry checks — no header means the body starts at the top of the screen.
+    # Geometry checks — no header means the status strip sits at the top of the
+    # screen and the body starts right below it.
     m_land = card_metrics(800, 480, landscape=True)
     m_port = card_metrics(480, 800, landscape=False)
-    assert m_land.content_top <= 2, m_land.content_top
+    assert m_land.status_top <= 2, m_land.status_top
+    assert m_land.content_top == m_land.status_top + STATUS_STRIP_H, m_land.content_top
+    assert m_port.content_top == m_port.status_top + STATUS_STRIP_H, m_port.content_top
     assert m_land.max_lines >= 4, f"landscape too tight: max_lines={m_land.max_lines}"
     assert m_port.max_lines >= 8, f"portrait too tight: max_lines={m_port.max_lines}"
 
-    # Dropping the status strip must not cost body lines.
+    # The status strip must stay cheap: one line of body text at most.
     assert m_port.max_lines >= 24, f"portrait lost body lines: {m_port.max_lines}"
 
     # Overlong cards are clipped, never paged.
@@ -249,7 +266,7 @@ def main() -> None:
 
     if failures:
         raise SystemExit(f"{failures} layout assertion(s) failed")
-    print("OK — layout asserts passed (portrait + landscape, clipping, flag corner)")
+    print("OK — layout asserts passed (portrait + landscape, clipping, status strip)")
 
 
 if __name__ == "__main__":
