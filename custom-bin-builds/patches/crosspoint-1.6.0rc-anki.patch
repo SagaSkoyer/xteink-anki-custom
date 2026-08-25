@@ -38552,10 +38552,10 @@ index 8d3c49e..c14d7a9 100644
    ScreenshotInfo getScreenshotInfo() const;
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..f85b348
+index 0000000..8cc7ad3
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,2009 @@
+@@ -0,0 +1,2025 @@
 +#include "AnkiActivity.h"
 +
 +#include "../../anki/AnkiFirmwareVersion.h"
@@ -38563,6 +38563,7 @@ index 0000000..f85b348
 +#include <EpdFontFamily.h>
 +#include <GfxRenderer.h>
 +#include <HalGPIO.h>
++#include <HalPowerManager.h>
 +#include <I18n.h>
 +#include <Utf8.h>
 +#include <WiFi.h>
@@ -38697,12 +38698,15 @@ index 0000000..f85b348
 +// Chosen from layout mocks (15/20/25); 25px is compact without feeling double-spaced.
 +constexpr int kCardAreaGapPx = 25;
 +
-+// BaseTheme::drawBatteryLeft() puts the icon 6px below the rect's top and the
-+// percentage text at the top, so the drawn block is 6px taller than the icon.
-+constexpr int kBatteryIconTopOffsetPx = 6;
-+// Reserved bottom strip: the battery block plus a little air above it, so the
-+// last line of card text never runs into the icon or the flag pennant.
-+constexpr int kCardStatusStripPadPx = kBatteryIconTopOffsetPx + 4;
++// Flag pennant drawn in the bottom-right of the content area.
++constexpr int kCardFlagWidthPx = 18;
++constexpr int kCardFlagHeightPx = 16;
++// Reserved bottom strip: the pennant plus a little air above it, so the last
++// line of card text never runs into it.
++constexpr int kCardStatusStripPadPx = 4;
++// Battery percentage sits in the button-hint band, right of the last hint;
++// this is its gap to the right edge of the (portrait) panel.
++constexpr int kCardBatteryRightPadPx = 4;
 +
 +int scalePx(const int value, const int scaleHalf) {
 +  return (value * scaleHalf) / 2;
@@ -40441,6 +40445,25 @@ index 0000000..f85b348
 +  }
 +}
 +
++// Charge as bare text ("92%", no icon) in the bottom-right of the button-hint
++// band, past the last hint. The card pane has no header, so this is the only
++// place a long review session can see the charge; the band is drawn in portrait
++// regardless of the card orientation, so this follows it there.
++void AnkiActivity::drawCardBatteryPercent() {
++  const GfxRenderer::Orientation origOrientation = renderer.getOrientation();
++  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
++
++  const auto label = std::to_string(powerManager.getBatteryPercentage()) + "%";
++  const int bandHeight = UITheme::getInstance().getMetrics().buttonHintsHeight;
++  const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, label.c_str());
++  const int textHeight = renderer.getTextHeight(SMALL_FONT_ID);
++  const int x = renderer.getScreenWidth() - kCardBatteryRightPadPx - textWidth;
++  const int y = renderer.getScreenHeight() - bandHeight + (bandHeight - textHeight) / 2;
++  renderer.drawText(SMALL_FONT_ID, x, y, label.c_str());
++
++  renderer.setOrientation(origOrientation);
++}
++
 +void AnkiActivity::renderCard(const bool answer) {
 +  applyUiOrientation(true);
 +  renderer.clearScreen();
@@ -40463,11 +40486,11 @@ index 0000000..f85b348
 +  const int footerHeight = metrics.buttonHintsHeight + 8;
 +  // Landscape: button hints sit on the side; safe area already accounts for that.
 +  const int contentBottom = safe.y + safe.height - (landscape ? 4 : footerHeight);
-+  // Bottom strip of the content area: battery on the left, flag pennant on the
-+  // right. Reserved out of the text area rather than drawn over it -- a card
-+  // long enough to fill the screen would otherwise put its last line straight
-+  // through the battery icon, and there is no paging to push that line onto.
-+  const int statusStripHeight = metrics.batteryHeight + kCardStatusStripPadPx;
++  // Bottom strip of the content area: the flag pennant on the right. Reserved
++  // out of the text area rather than drawn over it -- a card long enough to
++  // fill the screen would otherwise put its last line straight through the
++  // pennant, and there is no paging to push that line onto.
++  const int statusStripHeight = kCardFlagHeightPx + kCardStatusStripPadPx;
 +  const int textBottom = contentBottom - statusStripHeight;
 +  const int availableHeight = std::max(1, textBottom - contentTop);
 +  const int maxLines = std::max(1, availableHeight / lineHeight);
@@ -40504,19 +40527,11 @@ index 0000000..f85b348
 +
 +  drawText(text, x, contentTop, contentWidth, maxLines, lineHeight, scaleHalf);
 +
-+  // Battery in the bottom-left corner of the content area. The card pane has no
-+  // header, so this is the only place a long review session can see the charge.
-+  GUI.drawBatteryLeft(renderer,
-+                      Rect{safe.x + metrics.contentSidePadding,
-+                           contentBottom - kBatteryIconTopOffsetPx - metrics.batteryHeight, metrics.batteryWidth,
-+                           metrics.batteryHeight},
-+                      true);
-+
 +  // Flag: solid pennant in the bottom-right corner of the content area, drawn
 +  // only when the card is flagged. Bottom-3 toggles it.
 +  if (currentCard.flag != 0) {
-+    constexpr int kFlagW = 18;
-+    constexpr int kFlagH = 16;
++    constexpr int kFlagW = kCardFlagWidthPx;
++    constexpr int kFlagH = kCardFlagHeightPx;
 +    const int flagX = safe.x + safe.width - metrics.contentSidePadding - kFlagW;
 +    const int flagY = contentBottom - kFlagH;
 +    const int poleX = flagX + 2;
@@ -40540,6 +40555,7 @@ index 0000000..f85b348
 +  const auto labels =
 +      mappedInput.mapLabels(tr(STR_BACK), tr(STR_ANKI_UNDO), tr(STR_ANKI_FLAG), tr(STR_ANKI_BURY));
 +  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
++  drawCardBatteryPercent();
 +  displayCardBuffer();
 +}
 +
@@ -40567,10 +40583,10 @@ index 0000000..f85b348
 +}
 diff --git a/src/activities/anki/AnkiActivity.h b/src/activities/anki/AnkiActivity.h
 new file mode 100644
-index 0000000..a91cc7e
+index 0000000..bf83024
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.h
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,94 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -40659,6 +40675,8 @@ index 0000000..a91cc7e
 +
 +  void renderMenu();
 +  void renderCard(bool answer);
++  // Battery charge as bare text in the button-hint band (card screens only).
++  void drawCardBatteryPercent();
 +  void renderMessage(bool error);
 +  // Draws one screenful; anything past maxLines is clipped (cards do not page).
 +  void drawText(const std::string& text, int x, int y, int width, int maxLines, int lineHeight, int scale);
