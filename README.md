@@ -1,28 +1,54 @@
-# Xteink X4 ↔ Anki offline sync
+# Xteink ↔ Anki offline sync
 
-**Offline Anki reviews on the [Xteink X4](https://xteink.com) e-ink reader**, with scheduling and AnkiWeb sync still handled by Anki Desktop on your computer.
+**Offline Anki reviews on the [Xteink](https://xteink.com) e-ink reader (X3 tested)**, with scheduling and AnkiWeb sync still handled by Anki Desktop on your computer.
 
 | Piece | Role |
 | --- | --- |
 | **Anki add-on** (`xteink_sync`) | Local LAN server: due cards out, reviews in, then normal AnkiWeb sync |
-| **X4 firmware** (CrossPoint 1.4.1 patch) | Offline study UI: multi-deck, grades; DE/Greek UI font or reader/SD fonts |
+| **Firmware** (CrossPoint 1.4.1 patch) | Offline study UI: multi-deck, grades; DE/Greek UI font or reader/SD fonts |
 
 > Community project — not an official Xteink or Anki product. Firmware is a **patch** on [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) 1.4.1, not a full fork.
 
 ## Status (v2.4.0)
 
-Working for daily use on X4 + Anki Desktop (macOS tested):
+Working for daily use on Xteink (X3 tested) + Anki Desktop (macOS tested):
 
 - Pull **all top-level decks with due cards** (not only the open deck)
-- **Max cards per deck / total** on X4 web UI **and** device Anki settings (defaults 250 / 1000)
+- **Max cards per deck / total** on device web UI **and** device Anki settings (defaults 9999 / 9999)
 - Deck select/switch on device, progress strip, landscape/portrait, handedness
 - Grades: **Again · Hard · Good · Easy** (physical L→R)
 - **Card font:** default UI font (German + modern/polytonic Greek); optional reader/SD font for other languages (**Fonts** page)
 - Push reviews with batch id (safe retries); scheduler runs on the Mac
 - **XFD converter** on pull: HTML/Markdown tables, lists, headings → e-ink plain text
-- **Bold on e-ink (Phase B):** `**…**` / `<b>` → mixed bold/regular runs on the X4
+- **Bold on e-ink (Phase B):** `**…**` / `<b>` → mixed bold/regular runs on the device
+- **Sleep resumes the card:** waking from sleep during a review reopens that same card (hold **Back** while waking for the home screen)
+- **Daily loop offline:** the pulled batch becomes due again each local day, so a week without Wi-Fi is a week of study (see **Daily loop** below)
 
-Known limits of the offline model: learning steps after Again/Hard are re-queued **locally** on the X4; final intervals always come from Anki’s scheduler after push.
+Known limits of the offline model: learning steps after Again/Hard are re-queued **locally** on the device; final intervals always come from Anki’s scheduler after push.
+
+### Daily loop
+
+Without a sync, the device would otherwise run out of cards after one pass. So
+each local day the whole pulled batch is made due again and you loop through it
+once more:
+
+- **Every card comes back**, however you graded it last time. Buried cards do
+  not — they stay out until the next pull.
+- **Every answer is kept and pushed.** Three days offline means three reviews
+  per card reach Anki, each stamped with the day you actually gave it, so the
+  scheduler and FSRS see the real history.
+- **Uploading ends the loop** — the batch is cleared and the next pull starts a
+  fresh one. The loop is what fills the gap *between* syncs.
+- Needs the device clock: **Settings → Clock**, synced over Wi-Fi once. Without
+  it nothing resurfaces and reviews carry no timestamp. The boundary is local
+  midnight; a new pass never appears underneath the card you are looking at, only
+  the next time you open Anki.
+- The device holds up to 4000 local reviews; past that it asks you to upload
+  before starting another pass.
+
+Worth knowing: re-answering a card Anki has already scheduled forward is an
+early review. Drilling a card daily for a week will leave it on a different
+interval than letting it wait would have. That is the trade the loop makes.
 
 ## Quick start
 
@@ -34,12 +60,12 @@ Known limits of the offline model: learning steps after Again/Hard are re-queued
 4. **Tools → Xteink Status** → note **LAN URL** and **API token**.
 5. Allow Anki through the OS firewall for local network connections.
 
-Optional config: **Tools → Add-ons → Xteink X4 E-Ink Offline Sync → Config** (`max_cards`, port, …).
+Optional config: **Tools → Add-ons → Xteink Offline Reviews → Config** (`max_cards`, port, …).
 
-### 2. Xteink X4
+### 2. Xteink device
 
 1. Download `crosspoint-1.4.1-xteink-anki.bin` from the same Release (check `SHA256SUMS`).
-2. Flash **only** on an X4 with CrossPoint **1.4.1** layout (CrossPoint web flasher “Custom .bin”, or **Settings → Firmware from SD**).
+2. Flash **only** on a device with CrossPoint **1.4.1** layout (CrossPoint web flasher “Custom .bin”, or **Settings → Firmware from SD**).
 3. On the device: **Data transfer → Join network**.
 4. In a browser: `http://crosspoint.local/settings` → **Anki Offline Sync**
    - Mac server URL, e.g. `http://192.168.1.23:5050` — **or** on device:
@@ -59,7 +85,7 @@ Full firmware build/flash notes: [`firmware/README.md`](firmware/README.md).
 ## Data flow
 
 ```text
-AnkiWeb ←→ Anki Desktop (scheduler) ←LAN→ Xteink X4 (offline reviews)
+AnkiWeb ←→ Anki Desktop (scheduler) ←LAN→ Xteink (offline reviews)
                  │
                  ├─ GET  /pull   → due cards (JSON or NDJSON)
                  └─ POST /push   → review log (batch_id = pull_id)
@@ -69,11 +95,11 @@ The add-on does **not** write Anki’s SQLite directly. Collection access goes t
 
 ## E-ink flashcard dialect (XFD)
 
-Anki cards are HTML on the desktop. The X4 has **no browser** and only draws **plain text lines** (plus optional bold for UI chrome). Full CommonMark or GFM would be wasted complexity and bad for short review sessions.
+Anki cards are HTML on the desktop. The device has **no browser** and only draws **plain text lines** (plus optional bold for UI chrome). Full CommonMark or GFM would be wasted complexity and bad for short review sessions.
 
 **XFD** (*Xteink Flashcard Dialect*) is a **small Markdown-inspired subset** aimed at grammar overviews and other structured cards—especially **tables**—that still fit a monochrome e-ink screen.
 
-The **Mac-side converter** lives in `xteink_sync/textutil.py` (`to_device_text` / `plain_text`) and runs on every `/pull`. Write cards in this subset (or Anki HTML that maps to it); the device still only receives plain `front` / `back` strings—no Markdown parser on the X4.
+The **Mac-side converter** lives in `xteink_sync/textutil.py` (`to_device_text` / `plain_text`) and runs on every `/pull`. Write cards in this subset (or Anki HTML that maps to it); the device still only receives plain `front` / `back` strings—no Markdown parser on the device.
 
 ### Goals
 
@@ -91,7 +117,7 @@ The **Mac-side converter** lives in `xteink_sync/textutil.py` (`to_device_text` 
 | Construct | Markdown | On device (target) |
 | --- | --- | --- |
 | Paragraphs / line breaks | blank line, hard break | blank line / new line |
-| **Bold** | `**lemma**` or `__lemma__` / `<b>` | STX/ETX markers in pull payload; X4 draws bold runs (also accepts raw `**…**`) |
+| **Bold** | `**lemma**` or `__lemma__` / `<b>` | STX/ETX markers in pull payload; device draws bold runs (also accepts raw `**…**`) |
 | Unordered list | `- item` / `* item` | `• item` |
 | Ordered list | `1. item` | `1. item` |
 | Table | GFM pipe table, **2–4 columns** | **Vector grid** (`\x04table…`, 1px lines); wide → stacked |
@@ -169,7 +195,7 @@ Target plain layout after conversion (ASCII box — UI_12 has no Unicode box gly
 
 ### Converter (design)
 
-The converter is the **Mac-side** step on pull (Anki add-on), not a second app on the X4. Firmware stays a dumb line renderer until optional bold spans exist.
+The converter is the **Mac-side** step on pull (Anki add-on), not a second app on the device. Firmware stays a dumb line renderer until optional bold spans exist.
 
 ```text
 Anki note / template
@@ -191,7 +217,7 @@ Anki note / template
   front / back strings in /pull JSON|NDJSON
         │
         ▼
-  X4 draws wrapped lines
+  device draws wrapped lines
 ```
 
 **Inputs the converter should accept**
@@ -227,7 +253,7 @@ Anki note / template
 **Bold and emphasis (Phase B — implemented)**
 
 - Converter turns `**…**`, `__…__`, `<b>`, `<strong>` into zero-width markers **STX** (`U+0002`) / **ETX** (`U+0003`) inside `front`/`back`.  
-- X4 `drawTextPage` measures and paints **mixed regular/bold runs** (word-wrap aware).  
+- Device `drawTextPage` measures and paints **mixed regular/bold runs** (word-wrap aware).  
 - Fallback on device: unpaired visible `**` toggles bold (for raw Markdown that skipped conversion).  
 - Older firmware may show nothing or odd glyphs for STX/ETX — flash a bin that includes Phase B. Add-on-only update still keeps tables/lists readable.
 
@@ -243,11 +269,11 @@ Anki note / template
 **Non-goals of the converter**
 
 - Pixel-perfect CSS or Anki card themes  
-- Shipping images or audio to the X4  
+- Shipping images or audio to the device  
 - Round-trip editing of Markdown on the device  
 - Guaranteeing huge “cheat sheet” notes—authors should split cards  
 
-**Status:** dialect + converter **implemented** in `textutil` (tables, lists, headings, quotes, bold markers). Phase B bold drawing **implemented** in the X4 firmware patch (`AnkiActivity::drawTextPage`).
+**Status:** dialect + converter **implemented** in `textutil` (tables, lists, headings, quotes, bold markers). Phase B bold drawing **implemented** in the firmware patch (`AnkiActivity::drawTextPage`).
 
 ### Author checklist
 
@@ -313,167 +339,3 @@ MIT — see [`LICENSE`](LICENSE). CrossPoint upstream is MIT; Anki itself is AGP
 ## Security
 
 LAN-only, token-protected. See [`SECURITY.md`](SECURITY.md).
-
----
-
-## Kurzanleitung (Deutsch)
-
-### Anki am Rechner
-
-1. `xteink_sync.ankiaddon` aus dem [Release](https://github.com/jakovm/xteink-anki/releases/latest) installieren (**2.4.0+** empfohlen).
-2. Anki neu starten → **Werkzeuge → Xteink Status** → LAN-Adresse und API-Token notieren.
-3. Optional unter **Werkzeuge → Erweiterungen → Config**: `max_cards`, `max_total_cards`, Port, …
-
-### Xteink X4
-
-1. Firmware-Bin flashen (nur X4 / CrossPoint **1.4.1**).
-2. **Datentransfer → Netzwerk beitreten** → im Browser `http://crosspoint.local/settings`.
-3. Unter **Anki Offline Sync**:
-   - Mac-Server-URL und API-Token
-   - **Max. Karten pro Stapel** / **gesamt**
-   - Kartenschrift: für Griechisch den Reader-Schalter **aus** lassen
-4. Für andere Sprachen: **Fonts** hochladen → Schrift wählen → **Use reader / SD font** an.
-5. Am Gerät: **Anki** → heutige Karten laden → lernen → Bewertungen übertragen.
-
-Am Gerät unter **Anki → Anki-Einstellungen** ebenfalls: Server, Token, Max-Karten, **Kartenschrift** (UI DE/Griechisch oder Reader/SD).
-
-Details zum Bauen/Flashen: [`firmware/README.md`](firmware/README.md) (Deutsch).
-
-### Flashcard-Dialekt (XFD) — Deutsch
-
-**XFD** (*Xteink Flashcard Dialect*) ist ein kleines, Markdown-ähnliches Subset für **strukturierte Karten** auf dem X4 — vor allem **Grammatik-Tabellen**. Kein volles CommonMark: das Gerät zeichnet Zeilen, keinen HTML-Browser.
-
-**Heute:** Converter beim `/pull` (`to_device_text`): Tabellen, Listen, Überschriften, Zitate, Trenner; **Fett** als STX/ETX-Marker. Die X4-Firmware zeichnet gemischte Bold/Regular-Läufe (plus Fallback `**…**`). Inline-Code-Backticks entfallen (Inhalt bleibt).
-
-#### Was du schreiben solltest
-
-| Stufe | Konstrukt | Schreibweise | Ziel auf dem Gerät |
-| --- | --- | --- | --- |
-| 1 | Absätze | Leerzeile | Zeilenumbruch |
-| 1 | **Fett** | `**Lemma**` / `<b>` | Bold auf dem X4 (STX/ETX bzw. `**`) |
-| 1 | Listen | `- …` / `1. …` | `• …` / `1. …` |
-| 1 | Tabelle | Pipe-Tabelle, **2–4 Spalten** | fest ausgerichtete Spalten + Kopfzeile |
-| 2 | eine Überschrift | `#` / `##` oben | erste Zeile hervorgehoben |
-| 2 | Inline-Code | `` `-ω, -εις` `` | Muster/Endungen |
-| 2 | Merksatz | `> …` | `│ …` |
-| 2 | Trenner | `---` | `────` oder Leerzeile |
-
-**Nicht XFD:** Bilder als Inhalt, Links zum Navigieren, verschachtelte Listen, Task-Listen, Footnotes, CSS/HTML-Ballast, Tabellen mit mehr als 4 Spalten, lange Code-Blöcke.
-
-#### Tabellen für Grammatik
-
-- **2×3** (Person × Numerus) ideal; **3×3** ok bei kurzen Formen; ab **4×4** splitten  
-- Zellen kurz (1–2 Wörter); eine Karte = ein Paradigma oder eine Regel  
-- Bei Platznot: Singular und Plural auf **zwei Karten**  
-- Lücke: eine Zelle `?` oder Cloze, Rest ausgefüllt  
-
-Beispiel Ziel-Layout:
-
-```text
-λύω — Präsens Aktiv
-
-        Sg          Pl
-1.      λύω         λύομεν
-2.      λύεις       λύετε
-3.      λύει        λύουσι(ν)
-```
-
-Gute Muster: volles Paradigma · eine Form abfragen · Regelliste · Kontrast-Zweispaltig · Raster mit einer Lücke.
-
-#### Converter (Konzeption)
-
-Läuft **auf dem Mac im Add-on** beim `/pull`, nicht auf dem X4.
-
-```text
-Anki (HTML oder Feldtext)
-    → XFD-Converter (textutil)
-    → front/back im Pull
-    → X4 zeichnet Zeilen
-```
-
-**Aufgaben des Converters**
-
-1. Scripts/Styles/Media-Rauschen entfernen (wie bisher Bilder → `[alt]` / `[Bild]`)  
-2. HTML-Struktur mappen: `<table>`, `<ul>`/`<ol>`, `<b>`/`<strong>`, `<p>`/`<br>`, `<blockquote>`, `<code>`  
-3. Rohes Markdown in Feldern erkennen, wenn keine Tags da sind (Pipe-Tabellen, `**fett**`)  
-4. Tabellen layouten: max. 4 Spalten, Zeichenbudget, Kopf + Linie; bei zu vielen Spalten stapeln (`Spalte: Wert`) statt still abschneiden  
-5. Länge begrenzen (`max_text_chars`); pager auf dem Gerät übernimmt den Rest  
-
-**Bold (Phase B):** Converter setzt Marker; Firmware rendert Runs. **Kein** voller Markdown-Parser auf dem ESP32.
-
-**Tests:** Fixtures in `tests/test_textutil.py` (Tabellen, Listen, Griechisch, Überbreite). Details und englische Spezifikation: Abschnitt **E-ink flashcard dialect (XFD)** oben.
-
----
-
-## API details (DE / long form)
-
-### Status
-
-```http
-GET /health
-```
-
-### Tageskarten laden
-
-Optional Query: `?max_cards=250&max_total=1000` (vom X4 gesetzt; Grenzen 1–1000).
-
-```http
-GET /pull
-Authorization: Bearer <API-TOKEN>
-```
-
-JSON-Beispiel:
-
-```json
-{
-  "status": "success",
-  "protocol_version": 2,
-  "pull_id": "e6b4f2c58b954f77956792816ca17db3",
-  "server_time": 1785349777,
-  "decks": [
-    {"id": "1512345678901", "name": "Greek", "card_count": 1}
-  ],
-  "cards": [
-    {
-      "id": "1700000000000",
-      "front": "Question",
-      "back": "Answer",
-      "card_type": "review",
-      "is_learning": false,
-      "queue": 2,
-      "reps": 12,
-      "mod": 1785300000,
-      "deck_id": "1512345678901",
-      "deck_name": "Greek"
-    }
-  ]
-}
-```
-
-Mit `Accept: application/x-ndjson` streamt der Server Kopfzeile, eine JSON-Zeile pro Karte und eine Abschlusszeile (ESP32-C3-freundlich).
-
-### Bewertungen zurücksenden
-
-```http
-POST /push
-Authorization: Bearer <API-TOKEN>
-Content-Type: application/json
-
-{
-  "batch_id": "<pull_id>",
-  "reviews": [
-    {
-      "card_id": "1700000000000",
-      "ease": 3,
-      "answered_at_ms": 1785391200123,
-      "duration_ms": 4200
-    }
-  ]
-}
-```
-
-`batch_id` macht Retries sicher (`duplicate` wenn schon verarbeitet). CSV bleibt kompatibel; optional `X-Xteink-Batch-ID`.
-
-### Offline-Grenze
-
-Ein morgendlicher Snapshot kennt Lernschritte nach Again/Hard nicht vollständig. Der X4 plant lokal nach und protokolliert mehrfach; die endgültige Terminierung macht immer Anki auf dem Rechner.

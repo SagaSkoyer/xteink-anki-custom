@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Build the Anki-enabled CrossPoint 1.6.0 beta RC firmware for Xteink X4 / X3.
+# Output: custom-bin-builds/crosspoint-1.6.0rc-xteink-anki-x4_x3.bin
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_dir="$(cd "${script_dir}/.." && pwd)"
 if [[ $# -gt 0 ]]; then
   source_dir="$("${script_dir}/prepare.sh" "$1" | tail -n 1)"
 else
   source_dir="$("${script_dir}/prepare.sh" | tail -n 1)"
 fi
-output_file="${repo_dir}/dist/crosspoint-1.4.1-xteink-anki.bin"
+output_file="${script_dir}/crosspoint-1.6.0rc-xteink-anki-x4_x3.bin"
 
-# Resolve PlatformIO even when not on PATH (common: ~/.platformio/penv).
+# Resolve PlatformIO/pioarduino even when not on PATH.
 platformio_command=()
 if command -v pio >/dev/null 2>&1; then
   platformio_command=(pio)
@@ -25,9 +27,11 @@ else
   exit 1
 fi
 
+# gh_release carries both -DFREEINK_DEVICE_X4=1 and -DFREEINK_DEVICE_X3=1, so one
+# binary serves both boards; CrossPoint picks the profile at runtime.
 "${platformio_command[@]}" run --project-dir "${source_dir}" -e gh_release
 
-# UI_12 (small/large) and UI_18 (native medium) must both carry DE/Greek/romanization.
+# UI_12 (card small/large) and UI_18 (card medium) must both carry DE/Greek/romanization.
 for font_header in \
   "${source_dir}/lib/EpdFont/builtinFonts/ubuntu_12_regular.h" \
   "${source_dir}/lib/EpdFont/builtinFonts/ubuntu_18_regular.h"
@@ -46,4 +50,6 @@ install -m 0644 "${source_dir}/.pio/build/gh_release/firmware.bin" "${output_fil
 printf 'Firmware: %s\n' "${output_file}"
 if command -v shasum >/dev/null 2>&1; then
   shasum -a 256 "${output_file}"
+else
+  sha256sum "${output_file}"
 fi

@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly CROSSPOINT_VERSION="1.4.1"
-readonly CROSSPOINT_COMMIT="970b2c6ca13d663eff1bcee9778dc48359d2ab70"
+# Clone the pinned CrossPoint 1.6.0 beta RC and apply the Anki patch.
+# Prints the prepared source directory on the last line.
+
+readonly CROSSPOINT_VERSION="1.6.0rc"
+readonly CROSSPOINT_COMMIT="6a501bba544d9e80598811dbdf2134d1bcb1ebd2"
 readonly CROSSPOINT_REPOSITORY="https://github.com/crosspoint-reader/crosspoint-reader.git"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

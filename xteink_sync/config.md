@@ -1,4 +1,4 @@
-# Xteink X4 Offline Sync
+# Xteink Offline Sync
 
 Nach dem ersten Start erzeugt das Add-on automatisch einen zufälligen
 `api_token`. Der Xteink muss ihn bei `/pull` und `/push` entweder als
@@ -21,15 +21,17 @@ senden.
   (macOS: `dns-sd`; sonst optional Python-Paket `zeroconf`). Der API-Token
   wird **nicht** veröffentlicht.
 - `mdns_name`: Anzeigename der mDNS-Instanz (Standard: `Xteink Anki`).
-- `max_cards`: Standard-Maximum **pro fälligem Stapel** (250). Der X4 kann
+- `max_cards`: Standard-Maximum **pro fälligem Stapel** (9999). Der X4 kann
   beim Pull mit `?max_cards=` überschreiben (Web-UI oder
   **Anki → Anki-Einstellungen → Max. Karten / Stapel**).
-- `max_total_cards`: Standard-Gesamtlimit über alle Stapel (1000). X4 kann mit
-  `?max_total=` überschreiben (**Max. Karten gesamt**). Harte Obergrenze 1000.
+- `max_total_cards`: Standard-Gesamtlimit über alle Stapel (9999). X4 kann mit
+  `?max_total=` überschreiben (**Max. Karten gesamt**). Harte Obergrenze 9999.
   Fehlt der Key in einer älteren Config, wird er beim Add-on-Start ergänzt.
 - `max_text_chars`: maximale Textlänge pro Karten-Seite.
-- `max_reviews_per_push`: maximale Anzahl Bewertungen in einem Push.
-- `max_request_bytes`: maximale Größe eines Push-Requests.
+- `max_reviews_per_push`: maximale Anzahl Bewertungen in einem Push (Standard
+  5000 - das Gerät legt jeden Tag ohne Sync eine weitere Runde über denselben
+  Stapel, also enthält ein Push nach mehreren Tagen mehrere Bewertungen je Karte).
+- `max_request_bytes`: maximale Größe eines Push-Requests (Standard 2 MB).
 - `operation_timeout_seconds`: Wartezeit auf Ankis Collection-Operationen.
 - `sync_after_push`: startet nach erfolgreicher Übernahme den AnkiWeb-Sync
   (auch nach Flag-Updates).
