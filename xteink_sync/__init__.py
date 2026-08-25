@@ -66,8 +66,10 @@ DEFAULT_CONFIG = {
     "max_cards": 9999,
     "max_total_cards": 9999,
     "max_text_chars": 4096,
-    "max_reviews_per_push": 500,
-    "max_request_bytes": 262144,
+    # Sized for a batch reviewed offline over several days: the device loops
+    # through its due cards once per day and pushes every pass at once.
+    "max_reviews_per_push": 5000,
+    "max_request_bytes": 2097152,
     "operation_timeout_seconds": 60,
     "sync_after_push": True,
     "allow_legacy_csv": True,
@@ -283,6 +285,29 @@ def _escape_search_text(text: str) -> str:
     """Escape a deck name for use inside an Anki search term."""
 
     return _SEARCH_ESCAPE_RE.sub(r"\\\1", text or "")
+
+
+_ANSWERS_PASS_SUFFIX = re.compile(r"^(?P<base>.*)-p(?P<pass_index>\d+)$")
+
+
+def _answers_file_sort_key(name: str) -> Tuple[str, int, str]:
+    """Order system-answers files by batch, then by the pass they came from.
+
+    The device names later passes of one batch "<batch>-pNN.ndjson" and leaves
+    the first pass as plain "<batch>.ndjson". Plain sorted() gets that wrong --
+    '-' (0x2D) sorts before '.' (0x2E), so every suffixed pass would come out
+    ahead of the first one and a card's reviews would reach the scheduler out
+    of order. Split the suffix off instead and sort on it numerically.
+    """
+    stem, extension = os.path.splitext(name)
+    match = _ANSWERS_PASS_SUFFIX.match(stem)
+    if not match:
+        return (stem, 0, extension)
+    try:
+        pass_index = int(match.group("pass_index"))
+    except ValueError:  # pragma: no cover - the regex only matches digits
+        return (stem, 0, extension)
+    return (match.group("base"), pass_index, extension)
 
 
 def _sorted_by_due(collection: Any, card_ids: List[int]) -> List[int]:
@@ -913,7 +938,7 @@ class XteinkAddon:
                 "skipped": 0,
             }
 
-        for name in sorted(os.listdir(answers_dir)):
+        for name in sorted(os.listdir(answers_dir), key=_answers_file_sort_key):
             if not name.endswith(".ndjson"):
                 continue
             file_path = os.path.join(answers_dir, name)

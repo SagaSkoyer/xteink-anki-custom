@@ -370,12 +370,25 @@ def parse_answers_ndjson(data: bytes) -> Tuple[Tuple[Review, ...], Tuple[FlagUpd
                 if ease < 1 or ease > 4:
                     continue
                 duration_ms = int(record.get("duration_ms", 0) or 0)
-                reviews.append(Review(card_id=card_id, ease=ease, duration_ms=duration_ms))
+                # Devices with a usable RTC stamp the moment each card was
+                # answered. A batch studied over several days must land on the
+                # days it was actually studied, not all at import time.
+                answered_at_ms = _timestamp_ms(
+                    record.get("answered_at_ms", record.get("answered_at"))
+                )
+                reviews.append(
+                    Review(
+                        card_id=card_id,
+                        ease=ease,
+                        answered_at_ms=answered_at_ms,
+                        duration_ms=duration_ms,
+                    )
+                )
             elif record_type == "flag":
                 flag = int(record["flag"])
                 if flag < 0 or flag > 7:
                     continue
                 flags.append(FlagUpdate(card_id=card_id, flag=flag))
-        except (ValueError, KeyError, TypeError, AttributeError):
+        except (ValueError, KeyError, TypeError, AttributeError, ProtocolError):
             continue
     return tuple(reviews), tuple(flags)
