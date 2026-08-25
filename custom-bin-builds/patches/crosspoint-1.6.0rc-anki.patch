@@ -38552,10 +38552,10 @@ index 8d3c49e..c14d7a9 100644
    ScreenshotInfo getScreenshotInfo() const;
 diff --git a/src/activities/anki/AnkiActivity.cpp b/src/activities/anki/AnkiActivity.cpp
 new file mode 100644
-index 0000000..5fc1584
+index 0000000..f85b348
 --- /dev/null
 +++ b/src/activities/anki/AnkiActivity.cpp
-@@ -0,0 +1,1988 @@
+@@ -0,0 +1,2009 @@
 +#include "AnkiActivity.h"
 +
 +#include "../../anki/AnkiFirmwareVersion.h"
@@ -38696,6 +38696,13 @@ index 0000000..5fc1584
 +// Standard gap between card areas (EN↔DE, lemma↔memory, memory↔table, …).
 +// Chosen from layout mocks (15/20/25); 25px is compact without feeling double-spaced.
 +constexpr int kCardAreaGapPx = 25;
++
++// BaseTheme::drawBatteryLeft() puts the icon 6px below the rect's top and the
++// percentage text at the top, so the drawn block is 6px taller than the icon.
++constexpr int kBatteryIconTopOffsetPx = 6;
++// Reserved bottom strip: the battery block plus a little air above it, so the
++// last line of card text never runs into the icon or the flag pennant.
++constexpr int kCardStatusStripPadPx = kBatteryIconTopOffsetPx + 4;
 +
 +int scalePx(const int value, const int scaleHalf) {
 +  return (value * scaleHalf) / 2;
@@ -40456,7 +40463,13 @@ index 0000000..5fc1584
 +  const int footerHeight = metrics.buttonHintsHeight + 8;
 +  // Landscape: button hints sit on the side; safe area already accounts for that.
 +  const int contentBottom = safe.y + safe.height - (landscape ? 4 : footerHeight);
-+  const int availableHeight = std::max(1, contentBottom - contentTop);
++  // Bottom strip of the content area: battery on the left, flag pennant on the
++  // right. Reserved out of the text area rather than drawn over it -- a card
++  // long enough to fill the screen would otherwise put its last line straight
++  // through the battery icon, and there is no paging to push that line onto.
++  const int statusStripHeight = metrics.batteryHeight + kCardStatusStripPadPx;
++  const int textBottom = contentBottom - statusStripHeight;
++  const int availableHeight = std::max(1, textBottom - contentTop);
 +  const int maxLines = std::max(1, availableHeight / lineHeight);
 +  const int contentWidth = safe.width - 2 * (metrics.contentSidePadding + 4);
 +
@@ -40490,6 +40503,14 @@ index 0000000..5fc1584
 +  }
 +
 +  drawText(text, x, contentTop, contentWidth, maxLines, lineHeight, scaleHalf);
++
++  // Battery in the bottom-left corner of the content area. The card pane has no
++  // header, so this is the only place a long review session can see the charge.
++  GUI.drawBatteryLeft(renderer,
++                      Rect{safe.x + metrics.contentSidePadding,
++                           contentBottom - kBatteryIconTopOffsetPx - metrics.batteryHeight, metrics.batteryWidth,
++                           metrics.batteryHeight},
++                      true);
 +
 +  // Flag: solid pennant in the bottom-right corner of the content area, drawn
 +  // only when the card is flagged. Bottom-3 toggles it.

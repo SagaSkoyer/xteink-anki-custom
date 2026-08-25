@@ -25,6 +25,11 @@ one day of study and six idle days.
 - The Anki menu header shows which pass you are on once cards have resurfaced.
 - **Local review log is capped at 4000 rows.** At the cap the device asks you to
   upload before starting another pass; grading the current pass still works.
+- **Battery and charge percentage on the card**, bottom-left of the review pane,
+  mirroring the flag pennant on the right. The card pane has no header, so a long
+  session had no way to see the charge without leaving the review. The bottom
+  strip is now reserved rather than drawn over, which costs at most one line of
+  card text and also stops a full-screen card running into the flag.
 
 Two supporting fixes this required:
 
