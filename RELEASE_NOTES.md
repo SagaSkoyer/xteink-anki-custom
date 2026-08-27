@@ -1,3 +1,18 @@
+# Unreleased — Again re-inserts 2-10 cards later
+
+## Firmware
+
+- **Again no longer always comes back 5 cards later.** The card is re-inserted a
+  random 2-10 cards further down the queue, so a card you keep failing does not
+  reappear on the same fixed rhythm every time. Hard on a learning card is
+  unchanged at 10. Progress, bury and undo behave exactly as before.
+  The gap comes from a small xorshift32 seeded per review (card id, answer time,
+  review count), so nothing has to survive a reboot and the device needs no
+  global RNG state.
+- The shipped `crosspoint-1.6.0rc-xteink-anki-x4_x3.bin` has **not** been rebuilt
+  for this change yet — run `custom-bin-builds/build.sh` and refresh
+  `custom-bin-builds/SHA256SUMS` before releasing.
+
 # v2.9.0 — keep studying offline: the batch comes back each day
 
 ## Firmware
