@@ -1,4 +1,4 @@
-# Unreleased — Again re-inserts 2-10 cards later
+# v2.9.1 — Again re-inserts 2-10 cards later
 
 ## Firmware
 
@@ -9,9 +9,11 @@
   The gap comes from a small xorshift32 seeded per review (card id, answer time,
   review count), so nothing has to survive a reboot and the device needs no
   global RNG state.
-- The shipped `crosspoint-1.6.0rc-xteink-anki-x4_x3.bin` has **not** been rebuilt
-  for this change yet — run `custom-bin-builds/build.sh` and refresh
-  `custom-bin-builds/SHA256SUMS` before releasing.
+- **Version reported by the device is now `1.6.0rc-anki-2.9.1`.** The 2.9.0
+  release bumped `AnkiFirmwareVersion.h` but not `platformio.ini`, so that image
+  still identified itself as `1.6.0rc-anki-2.8.0`; both carry 2.9.1 now.
+- `crosspoint-1.6.0rc-xteink-anki-x4_x3.bin` rebuilt from the patch, checksum in
+  `custom-bin-builds/SHA256SUMS` refreshed.
 
 # v2.9.0 — keep studying offline: the batch comes back each day
 

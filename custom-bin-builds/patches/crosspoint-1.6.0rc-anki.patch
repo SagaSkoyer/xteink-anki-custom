@@ -38256,7 +38256,7 @@ index e07c59d..835044c 100644
  [crosspoint]
  version = 1.5.0
 +; Xteink Anki custom build: CrossPoint 1.6.0 beta RC + xteink-anki package version.
-+anki_version = 1.6.0rc-anki-2.8.0
++anki_version = 1.6.0rc-anki-2.9.1
  
  [base]
  platform = https://github.com/pioarduino/platform-espressif32/releases/download/55.03.37/platform-espressif32.zip
@@ -41082,7 +41082,7 @@ index 0000000..67ea59d
 +// xteink-anki package version (bump with RELEASE_NOTES / dist binary).
 +// CROSSPOINT_VERSION is set by PlatformIO (e.g. 1.4.1-anki-2.7.0 on gh_release).
 +#ifndef XTEINK_ANKI_FW_VERSION
-+#define XTEINK_ANKI_FW_VERSION "2.9.0"
++#define XTEINK_ANKI_FW_VERSION "2.9.1"
 +#endif
 +
 +// Label for Anki UI headers (static buffer — UI thread only).
