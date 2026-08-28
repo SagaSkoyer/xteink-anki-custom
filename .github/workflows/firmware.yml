@@ -67,11 +67,12 @@ jobs:
           if-no-files-found: error
 
       # Every commit on the default branch republishes the "latest" prerelease,
-      # so the newest image always sits behind one unchanging, login-free URL:
+      # so the newest image always sits behind one unchanging URL:
       #   …/releases/download/latest/crosspoint-1.6.0rc-xteink-anki-x4_x3.bin
-      # Run artifacts (above) need a GitHub login, arrive zipped, and expire
-      # after 90 days; this does not. It is a prerelease, so the repository's
-      # "Latest release" badge keeps pointing at the newest v* tag.
+      # Run artifacts (above) arrive zipped and expire after 90 days; this does
+      # not, and it is readable by anyone who can read the repository (an open
+      # link once the repository is public). It is a prerelease, so the
+      # repository's "Latest release" badge keeps pointing at the newest v* tag.
       - name: Publish the rolling latest build
         if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
         env:

@@ -327,10 +327,11 @@ rm -f dist/xteink_sync.ankiaddon
 
 A flashable image does not need a local toolchain: the **Firmware** GitHub
 Actions workflow builds one on every push, and the newest build of the default
-branch is always downloadable, without a GitHub login, from
-<https://github.com/SagaSkoyer/xteink-anki-custom/releases/download/latest/crosspoint-1.6.0rc-xteink-anki-x4_x3.bin>.
-Per-commit builds live under each run's Artifacts, and a `v*` tag publishes a
-fixed release. See `custom-bin-builds/README.md` for the details.
+branch is always at
+<https://github.com/SagaSkoyer/xteink-anki-custom/releases/download/latest/crosspoint-1.6.0rc-xteink-anki-x4_x3.bin>
+— readable by anyone who can read the repository. Per-commit builds live under
+each run's Artifacts, and a `v*` tag publishes a fixed release. See
+`custom-bin-builds/README.md` for the details.
 
 ## Sharing with Anki & Xteink communities
 
