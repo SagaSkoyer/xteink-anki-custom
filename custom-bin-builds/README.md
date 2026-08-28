@@ -49,11 +49,34 @@ whole update.
 
 ## Getting a fresh image without building it
 
-`.github/workflows/firmware.yml` builds the image on every push and on demand
-(**Actions → Firmware → Run workflow**). The `.bin` and its `SHA256SUMS` land
-under the run's **Artifacts**, so a flashable image never requires a local
-toolchain. Pushing a `v*` tag additionally attaches both files to the matching
-GitHub Release.
+`.github/workflows/firmware.yml` builds the image on every push, on every pull
+request, and on demand (**Actions → Firmware → Run workflow**), so a flashable
+image never requires a local toolchain. There are three ways to get one:
+
+- **Newest build of the default branch** — always at this unchanging address,
+  no GitHub login needed:
+
+  ```text
+  https://github.com/SagaSkoyer/xteink-anki-custom/releases/download/latest/crosspoint-1.6.0rc-xteink-anki-x4_x3.bin
+  ```
+
+  Every commit on `poc` replaces the `latest` prerelease with a fresh build of
+  that commit, alongside its `SHA256SUMS`. It is marked prerelease, so the
+  repository's "Latest release" badge still points at the newest `v*` tag.
+  Because each build embeds its own timestamp and image digest, the file behind
+  this link changes on every commit even when no code changed.
+
+- **A specific commit, including branches and pull requests** — the run's
+  **Artifacts**, named `firmware-<commit sha>`. These need a GitHub login,
+  download as a zip, and expire after 90 days.
+
+- **A fixed release** — pushing a `v*` tag builds that commit and attaches the
+  `.bin` and `SHA256SUMS` to the matching GitHub Release, which never changes
+  afterwards.
+
+Both release paths need **Settings → Actions → General → Workflow permissions**
+set to *Read and write*; without it the build still succeeds and the artifact
+still appears, but publishing fails with a 403.
 
 ## Building from source
 
