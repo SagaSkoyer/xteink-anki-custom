@@ -38256,7 +38256,7 @@ index e07c59d..835044c 100644
  [crosspoint]
  version = 1.5.0
 +; Xteink Anki custom build: CrossPoint 1.6.0 beta RC + xteink-anki package version.
-+anki_version = 1.6.0rc-anki-2.8.0
++anki_version = 1.6.0rc-anki-2.9.1
  
  [base]
  platform = https://github.com/pioarduino/platform-espressif32/releases/download/55.03.37/platform-espressif32.zip
@@ -41082,7 +41082,7 @@ index 0000000..67ea59d
 +// xteink-anki package version (bump with RELEASE_NOTES / dist binary).
 +// CROSSPOINT_VERSION is set by PlatformIO (e.g. 1.4.1-anki-2.7.0 on gh_release).
 +#ifndef XTEINK_ANKI_FW_VERSION
-+#define XTEINK_ANKI_FW_VERSION "2.9.0"
++#define XTEINK_ANKI_FW_VERSION "2.9.1"
 +#endif
 +
 +// Label for Anki UI headers (static buffer — UI thread only).
@@ -41183,7 +41183,7 @@ new file mode 100644
 index 0000000..bc343ae
 --- /dev/null
 +++ b/src/anki/AnkiStore.cpp
-@@ -0,0 +1,1641 @@
+@@ -0,0 +1,1658 @@
 +#include "AnkiStore.h"
 +
 +#include <ArduinoJson.h>
@@ -41331,6 +41331,22 @@ index 0000000..bc343ae
 +  const uint32_t day = doy - (153 * mp + 2) / 5 + 1;                        // [1, 31]
 +  const uint32_t month = mp + (mp < 10 ? 3 : -9);                           // [1, 12]
 +  return static_cast<uint32_t>(year + (month <= 2)) * 10000u + month * 100u + day;
++}
++
++// Again re-inserts the card a random 2-10 cards further down the queue rather
++// than always 5, so a card graded Again over and over does not come back on the
++// same rhythm every single time. xorshift32 over a per-review seed keeps this
++// self-contained: no RNG state has to survive a reboot, and the sequence still
++// differs per card, per answer time and per review.
++size_t againReinsertGap(const uint64_t cardId, const uint64_t answeredAtMs, const uint32_t reviewCount) {
++  uint64_t seed = cardId * 0x9e3779b97f4a7c15ull + answeredAtMs +
++                  static_cast<uint64_t>(reviewCount) * 0x2545f4914f6cdd1dull;
++  uint32_t x = static_cast<uint32_t>(seed ^ (seed >> 32));
++  if (x == 0) x = 0x9e3779b9u;
++  x ^= x << 13;
++  x ^= x >> 17;
++  x ^= x << 5;
++  return 2u + (x % 9u);  // 2..10 inclusive
 +}
 +
 +}  // namespace
@@ -42498,11 +42514,12 @@ index 0000000..bc343ae
 +  deck->cursor++;
 +  reviewCount++;
 +
-+  // Again always, and Hard on learning steps: re-insert into the queue. These
-+  // do not count toward progress (baseline/completed).
++  // Again always, and Hard on learning steps: re-insert into the queue. Again
++  // lands a random 2-10 cards later, Hard-on-learning a fixed 10. These do not
++  // count toward progress (baseline/completed).
 +  const bool requeue = (ease == 1) || (ease == 2 && card.isLearning);
 +  if (requeue) {
-+    const size_t gap = ease == 1 ? 5 : 10;
++    const size_t gap = ease == 1 ? againReinsertGap(card.id, answeredAtMs, reviewCount) : 10;
 +    const size_t insertAt = std::min(deck->queue.size(), static_cast<size_t>(deck->cursor) + gap);
 +    deck->queue.insert(deck->queue.begin() + insertAt, reviewedCardIndex);
 +  } else {

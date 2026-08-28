@@ -322,8 +322,12 @@ rm -f dist/xteink_sync.ankiaddon
     protocol.py textutil.py user_files )
 
 # Rebuild firmware (needs PlatformIO / pioarduino)
-./firmware/build.sh
+./custom-bin-builds/build.sh
 ```
+
+A flashable image does not need a local toolchain: the **Firmware** GitHub
+Actions workflow builds it on every push and on demand, and leaves the `.bin`
+plus `SHA256SUMS` under the run's Artifacts (and on the Release for a `v*` tag).
 
 ## Sharing with Anki & Xteink communities
 

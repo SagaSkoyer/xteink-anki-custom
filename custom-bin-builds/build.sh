@@ -47,9 +47,21 @@ done
 
 install -m 0644 "${source_dir}/.pio/build/gh_release/firmware.bin" "${output_file}"
 
+# SHA256SUMS is regenerated here so the checksums can never drift from the
+# files they describe.
+sha256_of() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    sha256sum "$1" | awk '{print $1}'
+  fi
+}
+
+patch_file="${script_dir}/patches/crosspoint-1.6.0rc-anki.patch"
+{
+  printf '%s  %s\n' "$(sha256_of "${output_file}")" "$(basename "${output_file}")"
+  printf '%s  %s\n' "$(sha256_of "${patch_file}")" "patches/$(basename "${patch_file}")"
+} > "${script_dir}/SHA256SUMS"
+
 printf 'Firmware: %s\n' "${output_file}"
-if command -v shasum >/dev/null 2>&1; then
-  shasum -a 256 "${output_file}"
-else
-  sha256sum "${output_file}"
-fi
+cat "${script_dir}/SHA256SUMS"
