@@ -53,22 +53,25 @@ whole update.
 request, and on demand (**Actions → Firmware → Run workflow**), so a flashable
 image never requires a local toolchain. There are three ways to get one:
 
-- **Newest build of the default branch** — always at this unchanging address,
-  no GitHub login needed:
+- **Newest build of the default branch** — always at this unchanging address:
 
   ```text
   https://github.com/SagaSkoyer/xteink-anki-custom/releases/download/latest/crosspoint-1.6.0rc-xteink-anki-x4_x3.bin
   ```
 
   Every commit on `poc` replaces the `latest` prerelease with a fresh build of
-  that commit, alongside its `SHA256SUMS`. It is marked prerelease, so the
-  repository's "Latest release" badge still points at the newest `v*` tag.
-  Because each build embeds its own timestamp and image digest, the file behind
-  this link changes on every commit even when no code changed.
+  that commit, alongside its `SHA256SUMS`. No Actions UI, no zip, no expiry —
+  the link goes straight to the file. Release assets are readable by anyone who
+  can read the repository, so while this repository is private the download
+  needs a signed-in account with access; it becomes an open link if the
+  repository is ever made public. It is marked prerelease, so the "Latest
+  release" badge still points at the newest `v*` tag. Because each build embeds
+  its own timestamp and image digest, the file behind this link changes on
+  every commit even when no code changed.
 
 - **A specific commit, including branches and pull requests** — the run's
-  **Artifacts**, named `firmware-<commit sha>`. These need a GitHub login,
-  download as a zip, and expire after 90 days.
+  **Artifacts**, named `firmware-<commit sha>`. These always require a GitHub
+  login, download as a zip, and expire after 90 days.
 
 - **A fixed release** — pushing a `v*` tag builds that commit and attaches the
   `.bin` and `SHA256SUMS` to the matching GitHub Release, which never changes
