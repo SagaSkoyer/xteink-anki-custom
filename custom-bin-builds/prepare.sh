@@ -12,15 +12,17 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd "${script_dir}/.." && pwd)"
 patch_file="${script_dir}/patches/crosspoint-${CROSSPOINT_VERSION}-anki.patch"
 
+# One checkout, reused for every build. Editing the patch resets this tree back
+# to the pinned commit and re-applies it; the PlatformIO caches (.pio, .cache)
+# survive, so a patch edit costs an incremental rebuild rather than a fresh
+# 1.3 GB clone plus a cold ~15 minute build.
+managed_checkout=1
 if [[ $# -gt 0 ]]; then
+  # Caller-supplied tree: apply onto it as-is, never reset it.
   source_dir="$1"
+  managed_checkout=0
 else
-  if command -v shasum >/dev/null 2>&1; then
-    patch_hash="$(shasum -a 256 "${patch_file}" | awk '{print $1}')"
-  else
-    patch_hash="$(sha256sum "${patch_file}" | awk '{print $1}')"
-  fi
-  source_dir="${repo_dir}/.firmware-build/crosspoint-reader-${CROSSPOINT_VERSION}-${patch_hash:0:12}"
+  source_dir="${repo_dir}/.firmware-build/crosspoint-reader-${CROSSPOINT_VERSION}"
 fi
 
 if [[ ! -d "${source_dir}/.git" ]]; then
@@ -31,6 +33,16 @@ if [[ ! -d "${source_dir}/.git" ]]; then
     --recurse-submodules \
     "${CROSSPOINT_REPOSITORY}" \
     "${source_dir}"
+fi
+
+if [[ "${managed_checkout}" == "1" ]]; then
+  git -C "${source_dir}" reset --hard --quiet "${CROSSPOINT_COMMIT}"
+  # Keep the build caches and any local PlatformIO overrides; drop everything
+  # else the previous patch left behind.
+  git -C "${source_dir}" clean -fdq \
+    -e .pio \
+    -e .cache \
+    -e platformio.local.ini
 fi
 
 actual_commit="$(git -C "${source_dir}" rev-parse HEAD)"

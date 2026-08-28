@@ -3,7 +3,8 @@
 
 Mirrors AnkiStore's queue handling (src/anki/AnkiStore.cpp in the prepared
 firmware tree, shipped as custom-bin-builds/patches/crosspoint-1.6.0rc-anki.patch):
-per-deck roster/queue/cursor, the Again and Hard-on-learning re-insertion gaps,
+per-deck roster/queue/cursor, the Again (random 2-10) and Hard-on-learning
+re-insertion gaps,
 bury, undo, and the once-per-local-date rebuild that makes a pulled batch due
 again. Run it to see what a multi-day offline session should look like, and to
 diff the expected anki-state.json against one pulled off a real SD card.
@@ -21,6 +22,24 @@ from typing import Dict, List, Optional
 MAX_REVIEW_ROWS = 4000  # AnkiStore::MAX_REVIEW_ROWS
 
 AGAIN, HARD, GOOD, EASY = 1, 2, 3, 4
+
+
+def again_reinsert_gap(card_id: int, answered_at_ms: int, review_count: int) -> int:
+    """AnkiStore::againReinsertGap() -- Again lands 2-10 cards later, not always 5.
+
+    xorshift32 over a per-review seed, so the gap varies per card, per answer
+    time and per review without any RNG state having to survive a reboot.
+    """
+    seed = (
+        card_id * 0x9E3779B97F4A7C15 + answered_at_ms + review_count * 0x2545F4914F6CDD1D
+    ) & 0xFFFFFFFFFFFFFFFF
+    x = (seed ^ (seed >> 32)) & 0xFFFFFFFF
+    if x == 0:
+        x = 0x9E3779B9
+    x ^= (x << 13) & 0xFFFFFFFF
+    x ^= x >> 17
+    x ^= (x << 5) & 0xFFFFFFFF
+    return 2 + (x % 9)
 
 
 @dataclass
@@ -110,7 +129,11 @@ class Store:
 
         requeue = ease == AGAIN or (ease == HARD and card in self.learning)
         if requeue:
-            gap = 5 if ease == AGAIN else 10
+            gap = (
+                again_reinsert_gap(card, answered_at_ms, self.review_count)
+                if ease == AGAIN
+                else 10
+            )
             deck.queue.insert(min(len(deck.queue), deck.cursor + gap), card)
         else:
             if deck.baseline == 0:

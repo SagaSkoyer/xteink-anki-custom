@@ -1,3 +1,20 @@
+# v2.9.1 — Again re-inserts 2-10 cards later
+
+## Firmware
+
+- **Again no longer always comes back 5 cards later.** The card is re-inserted a
+  random 2-10 cards further down the queue, so a card you keep failing does not
+  reappear on the same fixed rhythm every time. Hard on a learning card is
+  unchanged at 10. Progress, bury and undo behave exactly as before.
+  The gap comes from a small xorshift32 seeded per review (card id, answer time,
+  review count), so nothing has to survive a reboot and the device needs no
+  global RNG state.
+- **Version reported by the device is now `1.6.0rc-anki-2.9.1`.** The 2.9.0
+  release bumped `AnkiFirmwareVersion.h` but not `platformio.ini`, so that image
+  still identified itself as `1.6.0rc-anki-2.8.0`; both carry 2.9.1 now.
+- `crosspoint-1.6.0rc-xteink-anki-x4_x3.bin` rebuilt from the patch, checksum in
+  `custom-bin-builds/SHA256SUMS` refreshed.
+
 # v2.9.0 — keep studying offline: the batch comes back each day
 
 ## Firmware
@@ -25,11 +42,12 @@ one day of study and six idle days.
 - The Anki menu header shows which pass you are on once cards have resurfaced.
 - **Local review log is capped at 4000 rows.** At the cap the device asks you to
   upload before starting another pass; grading the current pass still works.
-- **Battery and charge percentage on the card**, bottom-left of the review pane,
-  mirroring the flag pennant on the right. The card pane has no header, so a long
-  session had no way to see the charge without leaving the review. The bottom
-  strip is now reserved rather than drawn over, which costs at most one line of
-  card text and also stops a full-screen card running into the flag.
+- **Charge percentage on the card**, as bare text ("92%", no icon) in the bottom
+  bar to the right of *Bury*. The card pane has no header, so a long session had
+  no way to see the charge without leaving the review; putting it in the button
+  bar keeps it out of the card's own text area. The bottom strip of the content
+  area is still reserved rather than drawn over, so a full-screen card cannot run
+  into the flag pennant.
 
 Two supporting fixes this required:
 

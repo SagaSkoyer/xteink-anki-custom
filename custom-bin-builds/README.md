@@ -15,7 +15,7 @@ Upstream base: <https://github.com/crosspoint-reader/crosspoint-reader>
 
 - Tag: `1.6.0rc` (the 1.6.0 beta RC line)
 - Commit: `6a501bba544d9e80598811dbdf2134d1bcb1ebd2`
-- Reported firmware version: `1.6.0rc-anki-2.9.0`
+- Reported firmware version: `1.6.0rc-anki-2.9.1`
 
 ## Device compatibility
 
@@ -47,6 +47,14 @@ flasher. Alternatively copy it to the SD card and install it from
 **Settings → Firmware from SD**. Keep power and the SD card connected for the
 whole update.
 
+## Getting a fresh image without building it
+
+`.github/workflows/firmware.yml` builds the image on every push and on demand
+(**Actions → Firmware → Run workflow**). The `.bin` and its `SHA256SUMS` land
+under the run's **Artifacts**, so a flashable image never requires a local
+toolchain. Pushing a `v*` tag additionally attaches both files to the matching
+GitHub Release.
+
 ## Building from source
 
 Requires Git, Python 3.10+, and pioarduino/PlatformIO (`pio` on `PATH` or at
@@ -56,10 +64,18 @@ Requires Git, Python 3.10+, and pioarduino/PlatformIO (`pio` on `PATH` or at
 ./custom-bin-builds/build.sh
 ```
 
-`prepare.sh` clones the pinned upstream tag into `.firmware-build/`, verifies the
-commit, and applies the patch; `build.sh` then runs the `gh_release` environment
-and verifies that the card fonts carry the required German/Greek/romanization
-glyphs before copying the image here.
+`prepare.sh` keeps one checkout of the pinned upstream tag at
+`.firmware-build/crosspoint-reader-1.6.0rc/`, resets it to the pinned commit,
+and applies the patch. The reset preserves `.pio`, `.cache`, and any
+`platformio.local.ini`, so editing the patch costs an incremental rebuild
+instead of a fresh clone and a cold build; **anything else left in that tree is
+discarded, so do not keep work there**. Passing a directory
+(`./custom-bin-builds/build.sh path/to/tree`) applies the patch onto that tree
+as-is and never resets it.
+
+`build.sh` then runs the `gh_release` environment, verifies that the card fonts
+carry the required German/Greek/romanization glyphs, copies the image here, and
+regenerates `SHA256SUMS` for the image and the patch.
 
 ## Notes on the 1.4.1 → 1.6.0rc port
 
